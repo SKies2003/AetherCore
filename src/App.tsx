@@ -1,51 +1,39 @@
 import React, { useState } from 'react';
-import { Activity, ShieldCheck, FileText, Calculator, Settings } from 'lucide-react';
+import { Activity, ShieldCheck, FileText, Calculator, Settings, AlertCircle } from 'lucide-react';
 import { Treaty, MasterConfig, SavedPolicy } from './types';
 import TreatiesView from './components/TreatiesView';
 import CalculatorView from './components/CalculatorView';
 import MasterView from './components/MasterView';
 import CessionsView from './components/CessionsView';
 import AccountsView from './components/AccountsView';
+import PlansView from './components/PlansView';
+import FacultativeView from './components/FacultativeView';
+import { Plan } from './types';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'treaties' | 'calculator' | 'master' | 'cessions' | 'accounts'>('calculator');
+  const [activeTab, setActiveTab] = useState<'treaties' | 'plans' | 'calculator' | 'master' | 'cessions' | 'accounts' | 'facultative'>('calculator');
   
   // App-level state for treaties
-  const [treaties, setTreaties] = useState<Treaty[]>([
-    {
-      id: 'default-1',
-      name: 'Standard Term Life Quota Share',
-      retentionType: 'absolute',
-      retentionValue: 2500000,
-      modelFactors: [
-        { id: 'mf1', frequency: 1, factor: 1.0 },
-        { id: 'mf2', frequency: 2, factor: 1.025 },
-        { id: 'mf3', frequency: 4, factor: 1.05 },
-        { id: 'mf4', frequency: 12, factor: 1.0875 },
-      ],
-      premiumRates: [
-        { id: 'pr1', riskCoverage: 'Death Benefit', ageMin: 18, ageMax: 35, gender: 'Any', rate: 1.5 },
-        { id: 'pr2', riskCoverage: 'Death Benefit', ageMin: 36, ageMax: 50, gender: 'Any', rate: 3.2 },
-        { id: 'pr3', riskCoverage: 'Death Benefit', ageMin: 51, ageMax: 65, gender: 'Any', rate: 8.5 },
-        { id: 'pr4', riskCoverage: 'Accidental Death Benefit', ageMin: 18, ageMax: 65, gender: 'Any', rate: 0.8 },
-        { id: 'pr5', riskCoverage: 'Disability Benefit', ageMin: 18, ageMax: 60, gender: 'Any', rate: 1.2 },
-      ],
-      reinsurers: []
-    }
-  ]);
+  const [treaties, setTreaties] = useState<Treaty[]>([]);
+
+  const [plans, setPlans] = useState<Plan[]>([]);
 
   const [masterConfig, setMasterConfig] = useState<MasterConfig>({
-    genderMappings: [{ id: 'gm1', sourceValue: 'M', targetValue: 'Male' }],
-    smokerMappings: [{ id: 'sm1', sourceValue: 'S', targetValue: 'Smoker' }],
-    medicalMappings: [{ id: 'mm1', sourceValue: 'Med', targetValue: 'Medical' }],
-    impairmentMappings: [{ id: 'im1', sourceValue: 'Joint', targetValue: 'Joint' }],
-    paymentModeMappings: [{ id: 'pm1', sourceValue: 'Annually', targetValue: 'Annual' }],
+    genderMappings: [],
+    smokerMappings: [],
+    medicalMappings: [],
+    impairmentMappings: [],
+    paymentModeMappings: [],
   });
 
   const [savedPolicies, setSavedPolicies] = useState<SavedPolicy[]>([]);
 
   const handleAddTreaty = (treaty: Treaty | Treaty[]) => {
     setTreaties(prev => Array.isArray(treaty) ? [...prev, ...treaty] : [...prev, treaty]);
+  };
+
+  const handleUpdateTreaty = (updatedTreaty: Treaty) => {
+    setTreaties(prev => prev.map(t => t.id === updatedTreaty.id ? updatedTreaty : t));
   };
 
   const handleDeleteTreaty = (id: string) => {
@@ -81,6 +69,18 @@ export default function App() {
           </button>
           
           <button
+            onClick={() => setActiveTab('plans')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              activeTab === 'plans' 
+                ? 'bg-blue-600/10 text-blue-400' 
+                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+            }`}
+          >
+            <FileText className="w-5 h-5" />
+            Plans
+          </button>
+
+          <button
             onClick={() => setActiveTab('treaties')}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
               activeTab === 'treaties' 
@@ -115,6 +115,18 @@ export default function App() {
             <Activity className="w-5 h-5" />
             Cessions
           </button>
+          
+          <button
+            onClick={() => setActiveTab('facultative')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              activeTab === 'facultative' 
+                ? 'bg-blue-600/10 text-blue-400' 
+                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+            }`}
+          >
+            <AlertCircle className="w-5 h-5" />
+            Facultative
+          </button>
 
           <button
             onClick={() => setActiveTab('accounts')}
@@ -146,7 +158,7 @@ export default function App() {
       <main className="flex-1 ml-64 min-h-screen max-w-7xl">
         <header className="bg-white px-8 py-5 border-b border-slate-200 flex items-center justify-between sticky top-0 z-10 hidden sm:flex">
           <h1 className="text-2xl font-semibold tracking-tight text-slate-800">
-            {activeTab === 'calculator' ? 'Input' : activeTab === 'treaties' ? 'Treaties' : activeTab === 'master' ? 'Master' : activeTab === 'cessions' ? 'Cessions' : 'Accounts'}
+            {activeTab === 'calculator' ? 'Input' : activeTab === 'plans' ? 'Plans' : activeTab === 'treaties' ? 'Treaties' : activeTab === 'master' ? 'Master' : activeTab === 'cessions' ? 'Cessions' : activeTab === 'facultative' ? 'Facultative' : 'Accounts'}
           </h1>
           <div className="flex items-center gap-2 text-sm text-slate-500">
             <Activity className="w-4 h-4 text-green-500" />
@@ -155,16 +167,24 @@ export default function App() {
         </header>
         
         <div className="p-8">
+          <div className={activeTab === 'plans' ? 'block' : 'hidden'}>
+            <PlansView 
+              plans={plans} 
+              setPlans={setPlans}
+            />
+          </div>
+
           <div className={activeTab === 'treaties' ? 'block' : 'hidden'}>
             <TreatiesView 
               treaties={treaties} 
               onAddTreaty={handleAddTreaty} 
+              onUpdateTreaty={handleUpdateTreaty}
               onDeleteTreaty={handleDeleteTreaty}
             />
           </div>
 
           <div className={activeTab === 'calculator' ? 'block' : 'hidden'}>
-            <CalculatorView treaties={treaties} masterConfig={masterConfig} savedPolicies={savedPolicies} setSavedPolicies={setSavedPolicies} />
+            <CalculatorView treaties={treaties} masterConfig={masterConfig} plans={plans} savedPolicies={savedPolicies} setSavedPolicies={setSavedPolicies} />
           </div>
 
           <div className={activeTab === 'master' ? 'block' : 'hidden'}>
@@ -173,6 +193,10 @@ export default function App() {
 
           <div className={activeTab === 'cessions' ? 'block' : 'hidden'}>
             <CessionsView savedPolicies={savedPolicies} setSavedPolicies={setSavedPolicies} />
+          </div>
+
+          <div className={activeTab === 'facultative' ? 'block' : 'hidden'}>
+            <FacultativeView savedPolicies={savedPolicies} setSavedPolicies={setSavedPolicies} />
           </div>
 
           <div className={activeTab === 'accounts' ? 'block' : 'hidden'}>

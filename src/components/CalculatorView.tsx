@@ -1,21 +1,21 @@
 import React, { useState, useMemo } from 'react';
-import { Treaty, PaymentFrequency, Gender, MasterConfig, SavedPolicy } from '../types';
+import { Treaty, PaymentFrequency, Gender, MasterConfig, SavedPolicy, Plan } from '../types';
 import { calculateSumCeded, calculatePremiumAmount } from '../lib/calculator';
 import { Calculator, AlertCircle, RefreshCw, Download, Upload, Save, Trash2, FileSpreadsheet } from 'lucide-react';
 
 export default function CalculatorView({ 
   treaties, 
   masterConfig, 
+  plans,
   savedPolicies, 
   setSavedPolicies 
 }: { 
   treaties: Treaty[];
   masterConfig: MasterConfig;
+  plans: Plan[];
   savedPolicies: SavedPolicy[];
   setSavedPolicies: React.Dispatch<React.SetStateAction<SavedPolicy[]>>;
 }) {
-  const [selectedTreatyId, setSelectedTreatyId] = useState<string>('');
-  
   // Policy Holder Details
   const [customerId, setCustomerId] = useState<string>('');
   const [policyNumber, setPolicyNumber] = useState<string>('');
@@ -27,30 +27,27 @@ export default function CalculatorView({
   const [medical, setMedical] = useState<string>('Non-Medical');
   const [impairment, setImpairment] = useState<string>('Single');
   const [sumAssured, setSumAssured] = useState<string>('5000000');
-  const [riskCoverage, setRiskCoverage] = useState<string>('Death Benefit');
+  const [selectedPlanId, setSelectedPlanId] = useState<string>('');
+  
+  const selectedPlan = useMemo(() => {
+    if (selectedPlanId) {
+      const p = plans.find(p => p.id === selectedPlanId);
+      if (p) return p;
+    }
+    return plans.length > 0 ? plans[0] : null;
+  }, [plans, selectedPlanId]);
+
+  const riskCoverage = selectedPlan ? selectedPlan.riskCoverage : 'Death Benefit';
 
   // Financials
-  const [grossReserves, setGrossReserves] = useState<string>('250000');
+  const [grossReserves, setGrossReserves] = useState<string>('0');
   
   // Multipliers & Extras
   const [emrPercentage, setEmrPercentage] = useState<string>('0');
-  const [selectionDiscount, setSelectionDiscount] = useState<string>('0');
   const [otherExtraPremium, setOtherExtraPremium] = useState<string>('0');
   
   // Frequencies
-  const [reinsurerPaymentFrequency, setReinsurerPaymentFrequency] = useState<string>('1');
   const [policyholderPremiumFrequency, setPolicyholderPremiumFrequency] = useState<string>('1');
-
-  const selectedTreaty = useMemo(() => {
-    return treaties.find(t => t.id === selectedTreatyId) || null;
-  }, [treaties, selectedTreatyId]);
-
-  // Derived Coverage Options from selected treaty (or unique list)
-  const availableCoverages = useMemo(() => {
-    if (!selectedTreaty) return ['Death Benefit', 'Accidental Death Benefit', 'Disability Benefit', 'Terminal Illness Benefit'];
-    const coverages = new Set(selectedTreaty.premiumRates.map(pr => pr.riskCoverage));
-    return Array.from(coverages);
-  }, [selectedTreaty]);
 
   const calculatedAge = useMemo(() => {
     if (!dob) return 0;
@@ -73,13 +70,45 @@ export default function CalculatorView({
     return 0;
   }, [dob]);
 
+  const selectedTreaty = useMemo(() => {
+    const ageNum = calculatedAge;
+    
+    for (const t of treaties) {
+       const prEntry = t.premiumRates.find(pr => 
+         pr.riskCoverage === riskCoverage &&
+         ageNum >= pr.ageMin && ageNum <= pr.ageMax &&
+         (pr.gender === 'Any' || pr.gender === gender)
+       );
+       
+       let isDateValid = true;
+       if (dateOfCommencement && t.startDate && t.endDate) {
+           const docDate = new Date(dateOfCommencement);
+           const tStart = new Date(t.startDate);
+           const tEnd = new Date(t.endDate);
+           if (docDate < tStart || docDate > tEnd) {
+             isDateValid = false;
+           }
+       }
+       
+       if (prEntry && isDateValid) {
+           return t;
+       }
+    }
+    return null;
+  }, [treaties, riskCoverage, calculatedAge, gender, dateOfCommencement]);
+
+  // Derived Coverage Options from all treaties
+  const availableCoverages = useMemo(() => {
+    const allCovs = new Set<string>();
+    treaties.forEach(t => t.premiumRates.forEach(pr => allCovs.add(pr.riskCoverage)));
+    return allCovs.size > 0 ? Array.from(allCovs) : ['Death Benefit'];
+  }, [treaties]);
+
   const computedFactors = useMemo(() => {
     if (!selectedTreaty) return null;
     
     // Model Factor Calculation
-    const freq = parseInt(reinsurerPaymentFrequency) as PaymentFrequency;
-    const mfEntry = selectedTreaty.modelFactors.find(m => m.frequency === freq);
-    const modelFactor = mfEntry ? mfEntry.factor : 0;
+    const modelFactor = selectedTreaty.reinsurerModelFactor || 1.0;
 
     // Premium Rate Calculation
     const ageNum = calculatedAge;
@@ -95,7 +124,7 @@ export default function CalculatorView({
     const premiumRate = prEntry ? prEntry.rate : null;
 
     return { modelFactor, premiumRate };
-  }, [selectedTreaty, reinsurerPaymentFrequency, calculatedAge, gender, riskCoverage]);
+  }, [selectedTreaty, calculatedAge, gender, riskCoverage]);
 
   const cededDetails = useMemo(() => {
     if (!selectedTreaty) return null;
@@ -117,11 +146,11 @@ export default function CalculatorView({
       computedFactors.modelFactor,
       computedFactors.premiumRate,
       parseFloat(emrPercentage) || 0,
-      parseFloat(selectionDiscount) || 0,
+      selectedTreaty.selectionDiscount || 0,
       parseFloat(otherExtraPremium) || 0,
       parseFloat(policyholderPremiumFrequency) || 1
     );
-  }, [cededDetails, computedFactors, emrPercentage, selectionDiscount, otherExtraPremium, policyholderPremiumFrequency, selectedTreaty]);
+  }, [cededDetails, computedFactors, emrPercentage, otherExtraPremium, policyholderPremiumFrequency, selectedTreaty]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', {
@@ -136,15 +165,36 @@ export default function CalculatorView({
       return;
     }
 
+    const isDuplicate = savedPolicies.some(p => 
+      p.customerId.toLowerCase() === customerId.toLowerCase() &&
+      p.policyNumber.toLowerCase() === policyNumber.toLowerCase() &&
+      p.dateOfCommencement === dateOfCommencement &&
+      p.riskCoverage.toLowerCase() === riskCoverage.toLowerCase() &&
+      p.dob === dob
+    );
+
+    if (isDuplicate) {
+      alert(`Cession already exists (Duplicate found for CustomerID: ${customerId}, PolicyNumber: ${policyNumber})`);
+      return;
+    }
+
     const c_sumAtRisk = cededDetails ? cededDetails.sumAtRisk : 0;
     const c_sumCeded = cededDetails ? cededDetails.sumCeded : 0;
+    
+    let pendingFacultative = false;
+    if (selectedTreaty && selectedTreaty.facultativeLimit > 0) {
+       pendingFacultative = parseFloat(sumAssured) > selectedTreaty.facultativeLimit;
+    }
 
     const newDoc: SavedPolicy = {
       id: crypto.randomUUID(),
-      actualCessionNo: c_sumCeded > 0 ? (Math.max(...savedPolicies.map(p => p.actualCessionNo || 0), 0) + 1) : null,
+      cessionStatus: pendingFacultative ? 'Facultative Pending' : (c_sumCeded > 0 ? 'Ceded' : undefined),
+      actualCessionNo: (c_sumCeded > 0 && !pendingFacultative) ? (Math.max(...savedPolicies.map(p => p.actualCessionNo || 0), 0) + 1) : null,
       customerId,
       policyNumber,
       policyHolderName,
+      planCode: selectedPlan?.planCode || '',
+      planName: selectedPlan?.planName || '',
       dateOfCommencement,
       dob,
       gender,
@@ -155,101 +205,31 @@ export default function CalculatorView({
       medical,
       impairment,
       
-      selectedTreatyId,
       treatyName: selectedTreaty.name,
       grossReserves,
 
       emrPercentage,
-      selectionDiscount,
+      selectionDiscount: (selectedTreaty.selectionDiscount || 0).toString(),
       otherExtraPremium,
-      reinsurerPaymentFrequency: parseInt(reinsurerPaymentFrequency) as PaymentFrequency,
+      reinsurerPaymentFrequency: (selectedTreaty.reinsurerPaymentFrequency || 1) as PaymentFrequency,
       policyholderPremiumFrequency: parseInt(policyholderPremiumFrequency) as PaymentFrequency,
 
       sumAtRisk: cededDetails ? cededDetails.sumAtRisk : 0,
       sumCeded: cededDetails ? cededDetails.sumCeded : 0,
       premiumRate: computedFactors?.premiumRate ?? null,
       modelFactor: computedFactors?.modelFactor ?? null,
-      premiumAmount: premiumAmount !== null ? premiumAmount : null
+      premiumAmount: premiumAmount !== null ? premiumAmount : null,
+      
+      reinsurerSplits: premiumAmount !== null ? (selectedTreaty.reinsurers || []).map(r => ({
+        name: r.name,
+        sharePercentage: r.sharePercentage,
+        premiumAmount: premiumAmount * (r.sharePercentage / 100)
+      })) : []
     };
 
     setSavedPolicies(prev => [...prev, newDoc]);
   };
 
-  const handleExportSavedPolicies = () => {
-    if (savedPolicies.length === 0) {
-      alert("No saved policies to export.");
-      return;
-    }
-
-    const headers = [
-      'Actual Cession No',
-      'Customer ID',
-      'Policy Number',
-      'Policy Holder Name',
-      'Date of Commencement',
-      'DOB',
-      'Age',
-      'Gender',
-      'Smoker Status',
-      'Medical Status',
-      'Impairment',
-      'Sum Assured',
-      'Risk Coverage',
-      'Treaty Name',
-      'Gross Reserves',
-      'Reinsurer Payment Mode',
-      'Policyholder Payment Freq',
-      'EMR %',
-      'Selection Discount %',
-      'Other Extra Premium',
-      'Sum At Risk',
-      'Sum Ceded',
-      'Resolved Premium Rate',
-      'Resolved Model Factor',
-      'Reinsurance Premium Amount'
-    ];
-
-    const rows = savedPolicies.map(p => [
-      p.actualCessionNo !== null ? p.actualCessionNo : '',
-      p.customerId,
-      p.policyNumber,
-      p.policyHolderName,
-      p.dateOfCommencement,
-      p.dob,
-      p.age,
-      p.gender,
-      p.smoker,
-      p.medical,
-      p.impairment,
-      p.sumAssured,
-      p.riskCoverage,
-      p.treatyName,
-      p.grossReserves,
-      p.reinsurerPaymentFrequency,
-      p.policyholderPremiumFrequency,
-      p.emrPercentage,
-      p.selectionDiscount,
-      p.otherExtraPremium,
-      p.sumAtRisk,
-      p.sumCeded,
-      p.premiumRate !== null ? p.premiumRate : 'N/A',
-      p.modelFactor !== null ? p.modelFactor : 'N/A',
-      p.premiumAmount !== null ? p.premiumAmount : 'N/A'
-    ].map(v => String(v).replace(/\t/g, ' ')).join('\t'));
-
-    const txtContent = headers.join('\t') + '\n' + rows.join('\n');
-    const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Saved_Policies.txt`;
-    document.body.appendChild(a);
-    a.click();
-    
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
 
   const parseCsvLine = (text: string) => {
     const result = [];
@@ -271,6 +251,35 @@ export default function CalculatorView({
     }
     result.push(current);
     return result;
+  };
+
+  const handleExportTemplate = () => {
+    const headers = [
+      'Customer ID',
+      'Policy Number',
+      'Policyholder Name',
+      'Date of Commencement',
+      'DOB',
+      'Gender',
+      'Smoker Status',
+      'Medical Status',
+      'Impairment Status',
+      'Plan Code',
+      'Sum Assured Base',
+      'Gross Reserves',
+      'EMR Percentage',
+      'Other Extra Premium',
+      'Policyholder Premium Frequency'
+    ];
+    
+    const csvContent = headers.join(',');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `policy_import_template.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleImportPolicies = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -350,30 +359,45 @@ export default function CalculatorView({
             const importedCustomer = getCol('customer id') || getCol('customerid');
             const importedPolicy = getCol('policy number') || getCol('policynumber');
             const importedDocRaw = getCol('date of commencement') || getCol('doc');
-            const importedRiskCov = getCol('risk coverage') || 'Death Benefit';
+            
+            const importedPlanCode = getCol('plan code') || getCol('plancode') || getCol('plan name') || getCol('plan');
+            let importedRiskCov = getCol('risk coverage') || 'Death Benefit';
+            let resolvedPlanCode = importedPlanCode;
+            let resolvedPlanName = '';
+            
+            if (importedPlanCode) {
+              const matchedPlan = plans.find(p => p.planCode.toLowerCase() === importedPlanCode.toLowerCase() || p.planName.toLowerCase() === importedPlanCode.toLowerCase());
+              if (matchedPlan) {
+                 importedRiskCov = matchedPlan.riskCoverage;
+                 resolvedPlanCode = matchedPlan.planCode;
+                 resolvedPlanName = matchedPlan.planName;
+              }
+            }
+
             const importedDobRaw = getCol('dob');
 
             const importedDoc = parseAndFormatDate(importedDocRaw);
             const importedDob = parseAndFormatDate(importedDobRaw);
 
             const isDuplicate = savedPolicies.some(p => 
-              p.customerId === importedCustomer &&
-              p.policyNumber === importedPolicy &&
+              p.customerId.toLowerCase() === importedCustomer.toLowerCase() &&
+              p.policyNumber.toLowerCase() === importedPolicy.toLowerCase() &&
               p.dateOfCommencement === importedDoc &&
-              p.riskCoverage === importedRiskCov &&
+              p.riskCoverage.toLowerCase() === importedRiskCov.toLowerCase() &&
               p.dob === importedDob
             ) || newPolicies.some(p => 
-              p.customerId === importedCustomer &&
-              p.policyNumber === importedPolicy &&
+              p.customerId.toLowerCase() === importedCustomer.toLowerCase() &&
+              p.policyNumber.toLowerCase() === importedPolicy.toLowerCase() &&
               p.dateOfCommencement === importedDoc &&
-              p.riskCoverage === importedRiskCov &&
+              p.riskCoverage.toLowerCase() === importedRiskCov.toLowerCase() &&
               p.dob === importedDob
             );
 
             if (isDuplicate) {
-              throw new Error(`cession already there (Duplicate found for CustomerID: ${importedCustomer}, PolicyNumber: ${importedPolicy})`);
+              throw new Error(`Cession already exists (Duplicate found for CustomerID: ${importedCustomer}, PolicyNumber: ${importedPolicy})`);
             }
 
+            // Allow duplicates for same policy but with new actualcessionno.
             const mapVal = (sourceVal: string, mappings: {sourceValue: string, targetValue: string}[], defaultVal: string, fieldName: string) => {
               if (!sourceVal) return defaultVal;
               const match = mappings.find(m => m.sourceValue.toLowerCase() === sourceVal.toLowerCase());
@@ -383,22 +407,23 @@ export default function CalculatorView({
               return match.targetValue;
             };
 
-            const importedName = getCol('policy holder name') || getCol('name');
-            const importedSum = getCol('sum assured') || '0';
-            const importedGrossRes = getCol('gross reserves') || '0';
-            const importedTreatyName = getCol('treaty name');
+            const importedName = getCol('policy holder name') || getCol('policyholder name') || getCol('name') || getCol('policy holder') || 'John Doe';
+            const importedSumStr = getCol('sum assured base') || getCol('sum assured') || '0';
+            const importedSum = importedSumStr.replace(/,/g, '');
+            const importedGrossResStr = getCol('gross reserves') || '0';
+            const importedGrossRes = importedGrossResStr.replace(/,/g, '');
             
-            const importedReinsFreqStr = mapVal(getCol('reinsurer payment mode') || getCol('reinsurer payment freq'), masterConfig.paymentModeMappings, 'Annual', 'Reinsurer Payment Mode');
-            const importedPolFreqStr = mapVal(getCol('policyholder payment freq'), masterConfig.paymentModeMappings, 'Annual', 'Policyholder Payment Freq');
+            const importedPolFreqStr = mapVal(getCol('policyholder payment freq') || getCol('policyholder premium frequency'), masterConfig.paymentModeMappings, 'Annual', 'Policyholder Payment Freq');
             
             const importedGender = mapVal(getCol('gender'), masterConfig.genderMappings, 'Male', 'Gender');
             const importedSmoker = mapVal(getCol('smoker status') || getCol('smoker'), masterConfig.smokerMappings, 'Non-Smoker', 'Smoker Status');
             const importedMedical = mapVal(getCol('medical status') || getCol('medical'), masterConfig.medicalMappings, 'Non-Medical', 'Medical Status');
             const importedImpairment = mapVal(getCol('impairment'), masterConfig.impairmentMappings, 'Single', 'Impairment');
             
-            const importedEmr = getCol('emr %') || '0';
-            const importedSelDisc = getCol('selection discount %') || '0';
-            const importedOtherExtra = getCol('other extra premium') || '0';
+            const importedEmrStr = getCol('emr %') || getCol('emr percentage') || '0';
+            const importedEmr = importedEmrStr.replace(/,/g, '');
+            const importedOtherExtraStr = getCol('other extra premium') || '0';
+            const importedOtherExtra = importedOtherExtraStr.replace(/,/g, '');
 
             let calcAgeNum = 0;
             if (importedDob) {
@@ -429,8 +454,29 @@ export default function CalculatorView({
               return 1 as PaymentFrequency;
             };
 
-            const tNameLower = importedTreatyName.toLowerCase();
-            const pTreaty = treaties.find(t => t.name.toLowerCase() === tNameLower);
+            let pTreaty: Treaty | null = null;
+            for (const t of treaties) {
+               const prEntry = t.premiumRates.find(pr => 
+                 pr.riskCoverage.trim().toLowerCase() === importedRiskCov.trim().toLowerCase() &&
+                 calcAgeNum >= pr.ageMin && calcAgeNum <= pr.ageMax &&
+                 (pr.gender === 'Any' || pr.gender.trim().toLowerCase() === importedGender.trim().toLowerCase())
+               );
+               
+               let isDateValid = true;
+               if (importedDoc && t.startDate && t.endDate) {
+                   const docDate = new Date(importedDoc);
+                   const tStart = new Date(t.startDate);
+                   const tEnd = new Date(t.endDate);
+                   if (docDate < tStart || docDate > tEnd) {
+                     isDateValid = false;
+                   }
+               }
+               
+               if (prEntry && isDateValid) {
+                   pTreaty = t;
+                   break;
+               }
+            }
             
             let c_sumAtRisk = 0;
             let c_sumCeded = 0;
@@ -448,14 +494,12 @@ export default function CalculatorView({
               c_sumAtRisk = cd.sumAtRisk;
               c_sumCeded = cd.sumCeded;
 
-              const fq = mapFreq(importedReinsFreqStr);
-              const mfEntry = pTreaty.modelFactors.find(m => m.frequency === fq);
-              c_mfFactor = mfEntry ? mfEntry.factor : 0;
+              c_mfFactor = pTreaty.reinsurerModelFactor || 1.0;
 
               const prEntry = pTreaty.premiumRates.find(pr => 
-                pr.riskCoverage.toLowerCase() === importedRiskCov.toLowerCase() &&
+                pr.riskCoverage.trim().toLowerCase() === importedRiskCov.trim().toLowerCase() &&
                 calcAgeNum >= pr.ageMin && calcAgeNum <= pr.ageMax &&
-                (pr.gender === 'Any' || pr.gender.toLowerCase() === importedGender.toLowerCase())
+                (pr.gender === 'Any' || pr.gender.trim().toLowerCase() === importedGender.trim().toLowerCase())
               );
               c_prRate = prEntry ? prEntry.rate : null;
 
@@ -465,7 +509,7 @@ export default function CalculatorView({
                   c_mfFactor,
                   c_prRate,
                   parseFloat(importedEmr) || 0,
-                  parseFloat(importedSelDisc) || 0,
+                  pTreaty.selectionDiscount || 0,
                   parseFloat(importedOtherExtra) || 0,
                   mapFreq(importedPolFreqStr)
                 );
@@ -474,18 +518,26 @@ export default function CalculatorView({
               }
             }
 
+            let pendingFacultative = false;
+            if (pTreaty && pTreaty.facultativeLimit > 0) {
+              pendingFacultative = parseFloat(importedSum) > pTreaty.facultativeLimit;
+            }
+
             let actualCessionNum: number | null = null;
-            if (c_sumCeded > 0) {
+            if (c_sumCeded > 0 && !pendingFacultative) {
               currentMaxCessionNo++;
               actualCessionNum = currentMaxCessionNo;
             }
 
             newPolicies.push({
               id: crypto.randomUUID(),
+              cessionStatus: pendingFacultative ? 'Facultative Pending' : (c_sumCeded > 0 ? 'Ceded' : undefined),
               actualCessionNo: actualCessionNum,
               customerId: importedCustomer,
               policyNumber: importedPolicy,
               policyHolderName: importedName,
+              planCode: resolvedPlanCode,
+              planName: resolvedPlanName,
               dateOfCommencement: importedDoc,
               dob: importedDob,
               gender: importedGender,
@@ -496,18 +548,24 @@ export default function CalculatorView({
               medical: importedMedical,
               impairment: importedImpairment,
               selectedTreatyId: pTreaty ? pTreaty.id : '',
-              treatyName: pTreaty ? pTreaty.name : importedTreatyName,
+              treatyName: pTreaty ? pTreaty.name : 'Unknown Treaty',
               grossReserves: importedGrossRes,
               emrPercentage: importedEmr,
-              selectionDiscount: importedSelDisc,
+              selectionDiscount: pTreaty ? (pTreaty.selectionDiscount || 0).toString() : '0',
               otherExtraPremium: importedOtherExtra,
-              reinsurerPaymentFrequency: mapFreq(importedReinsFreqStr),
+              reinsurerPaymentFrequency: pTreaty ? (pTreaty.reinsurerPaymentFrequency || 1) as PaymentFrequency : 1,
               policyholderPremiumFrequency: mapFreq(importedPolFreqStr),
               sumAtRisk: c_sumAtRisk,
               sumCeded: c_sumCeded,
               premiumRate: c_prRate,
               modelFactor: c_mfFactor,
-              premiumAmount: c_premium
+              premiumAmount: c_premium,
+              
+              reinsurerSplits: (c_premium !== null && pTreaty) ? (pTreaty.reinsurers || []).map(r => ({
+                name: r.name,
+                sharePercentage: r.sharePercentage,
+                premiumAmount: c_premium! * (r.sharePercentage / 100)
+              })) : []
             });
           }
         }
@@ -528,18 +586,18 @@ export default function CalculatorView({
           <p className="text-sm text-slate-500 mt-1">Compute Sum At Risk, Sum Ceded, and final payable Reinsurance Premium.</p>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={handleExportTemplate}
+            className="flex items-center gap-2 bg-white border border-slate-300 text-slate-700 px-4 py-2 rounded-md hover:bg-slate-50 transition-colors font-medium text-sm shadow-sm cursor-pointer"
+          >
+            <Download className="w-4 h-4" />
+            Template
+          </button>
           <label className="flex items-center gap-2 bg-white border border-slate-300 text-slate-700 px-4 py-2 rounded-md hover:bg-slate-50 transition-colors font-medium text-sm shadow-sm cursor-pointer">
             <Upload className="w-4 h-4" />
             Import CSV
             <input type="file" accept=".csv" className="hidden" onChange={handleImportPolicies} />
           </label>
-          <button
-            onClick={handleExportSavedPolicies}
-            className="flex items-center gap-2 bg-slate-800 text-white px-4 py-2 rounded-md hover:bg-slate-700 transition-colors font-medium text-sm shadow-sm"
-          >
-            <Download className="w-4 h-4" />
-            Export Saved
-          </button>
         </div>
       </div>
 
@@ -599,7 +657,6 @@ export default function CalculatorView({
                   onChange={(e) => setGender(e.target.value as Gender)}
                   className="block w-full rounded-md border-slate-300 py-1.5 px-3 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border"
                 >
-                  <option value="Any">Any</option>
                   <option value="Male">Male</option>
                   <option value="Female">Female</option>
                 </select>
@@ -655,14 +712,15 @@ export default function CalculatorView({
               </div>
 
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-slate-700 mb-1">Risk Coverage</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Plan</label>
                 <select
-                  value={riskCoverage}
-                  onChange={(e) => setRiskCoverage(e.target.value)}
+                  value={selectedPlanId}
+                  onChange={(e) => setSelectedPlanId(e.target.value)}
                   className="block w-full rounded-md border-slate-300 py-1.5 px-3 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border"
                 >
-                  {availableCoverages.map(cov => (
-                    <option key={cov} value={cov}>{cov}</option>
+                  <option value="">-- Select a Plan --</option>
+                  {plans.map(p => (
+                     <option key={p.id} value={p.id}>{p.planName} ({p.planCode}) - {p.riskCoverage}</option>
                   ))}
                 </select>
               </div>
@@ -679,62 +737,13 @@ export default function CalculatorView({
             </div>
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-lg shadow-sm">
-            <div className="p-4 border-b border-slate-200 bg-slate-50/50">
-              <h3 className="text-sm font-semibold text-slate-800 uppercase tracking-wider">2. Treaty & Financials</h3>
-            </div>
-            
-            <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Applicable Treaty</label>
-                <div className="relative">
-                  <select
-                    value={selectedTreatyId}
-                    onChange={(e) => setSelectedTreatyId(e.target.value)}
-                    className="block w-full rounded-md border-slate-300 py-2 pl-3 pr-10 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border"
-                  >
-                    <option value="">-- Select Treaty --</option>
-                    {treaties.map(t => (
-                      <option key={t.id} value={t.id}>{t.name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Gross Reserves (₹)</label>
-                <input
-                  type="number"
-                  value={grossReserves}
-                  onChange={(e) => setGrossReserves(e.target.value)}
-                  className="block w-full rounded-md border-slate-300 py-1.5 px-3 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border"
-                />
-              </div>
-            </div>
-          </div>
-
           {/* Section 3: Modifiers and Frequencies */}
           <div className="bg-white border border-slate-200 rounded-lg shadow-sm">
             <div className="p-4 border-b border-slate-200 bg-slate-50/50">
-              <h3 className="text-sm font-semibold text-slate-800 uppercase tracking-wider">3. Frequencies & Modifiers</h3>
+              <h3 className="text-sm font-semibold text-slate-800 uppercase tracking-wider">2. Frequencies & Modifiers</h3>
             </div>
             
             <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Reinsurer Payment Mode</label>
-                <select
-                  value={reinsurerPaymentFrequency}
-                  onChange={(e) => setReinsurerPaymentFrequency(e.target.value)}
-                  className="block w-full rounded-md border-slate-300 py-1.5 px-3 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border"
-                >
-                  <option value="1">Annually</option>
-                  <option value="2">Semi-Annually</option>
-                  <option value="4">Quarterly</option>
-                  <option value="12">Monthly</option>
-                </select>
-                <p className="text-xs text-slate-500 mt-1">Dictates the Treaty Model Factor</p>
-              </div>
-
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Policyholder Frequency</label>
                 <select
@@ -762,12 +771,11 @@ export default function CalculatorView({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Selection Discount (%)</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Gross Reserves (₹)</label>
                 <input
                   type="number"
-                  step="0.1"
-                  value={selectionDiscount}
-                  onChange={(e) => setSelectionDiscount(e.target.value)}
+                  value={grossReserves}
+                  onChange={(e) => setGrossReserves(e.target.value)}
                   className="block w-full rounded-md border-slate-300 py-1.5 px-3 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border"
                 />
               </div>
@@ -861,7 +869,7 @@ export default function CalculatorView({
                       <div className="flex justify-between text-sm">
                         <span className="text-slate-400">EMR / Selection Adj.</span>
                         <span className="font-mono text-slate-300">
-                          {(1 + (parseFloat(emrPercentage)/100 || 0) - (parseFloat(selectionDiscount)/100 || 0)).toFixed(4)}x
+                          {(1 + (parseFloat(emrPercentage)/100 || 0) - ((selectedTreaty?.selectionDiscount || 0) / 100)).toFixed(4)}x
                         </span>
                       </div>
                     </div>

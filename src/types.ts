@@ -46,9 +46,14 @@ export interface ReinsurerShare {
 export interface Treaty {
   id: string;
   name: string;
+  startDate: string;
+  endDate: string;
   retentionType: RetentionType;
   retentionValue: number;
-  modelFactors: ModelFactorEntry[];
+  facultativeLimit: number;
+  reinsurerPaymentFrequency: PaymentFrequency;
+  reinsurerModelFactor: number;
+  selectionDiscount: number;
   premiumRates: PremiumRateEntry[];
   reinsurers: ReinsurerShare[];
 }
@@ -59,9 +64,7 @@ export interface PolicyInput {
   age: number;
   gender: Gender;
   riskCoverage: string;
-  reinsurerPaymentFrequency: PaymentFrequency;
   emrPercentage: number;
-  selectionDiscountPercentage: number;
   otherExtraPremium: number;
   policyholderPremiumFrequency: number;
 }
@@ -72,6 +75,8 @@ export interface SavedPolicy {
   customerId: string;
   policyNumber: string;
   policyHolderName: string;
+  planCode?: string;
+  planName?: string;
   dateOfCommencement: string;
   dob: string;
   gender: string;
@@ -82,7 +87,9 @@ export interface SavedPolicy {
   medical: string;
   impairment: string;
   
-  selectedTreatyId: string;
+  cessionStatus?: 'Facultative Pending' | 'Accepted' | 'Declined' | 'Ceded' | 'No Cession';
+  
+  selectedTreatyId?: string; // made optional for backwards comp
   treatyName: string;
   grossReserves: string;
 
@@ -97,4 +104,14 @@ export interface SavedPolicy {
   premiumRate: number | null;
   modelFactor: number | null;
   premiumAmount: number | null;
+  
+  reinsurerSplits?: { name: string; sharePercentage: number; premiumAmount: number }[];
+}
+
+export interface Plan {
+  id: string;
+  planName: string;
+  planCode: string;
+  riskCoverage: string;
+  type: 'Base' | 'Rider';
 }

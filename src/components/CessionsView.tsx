@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { SavedPolicy } from '../types';
-import { FileSpreadsheet, Trash2, Search, Eye, X } from 'lucide-react';
+import { FileSpreadsheet, Trash2, Search, Eye, X, Download } from 'lucide-react';
 
 export default function CessionsView({
   savedPolicies,
@@ -13,11 +13,13 @@ export default function CessionsView({
   const [searchValue, setSearchValue] = useState('');
   const [viewPolicy, setViewPolicy] = useState<SavedPolicy | null>(null);
 
+  const cededPolicies = useMemo(() => savedPolicies.filter(p => p.cessionStatus !== 'Facultative Pending' && p.cessionStatus !== 'Declined'), [savedPolicies]);
+
   const filteredPolicies = useMemo(() => {
-    if (!searchValue.trim()) return savedPolicies;
+    if (!searchValue.trim()) return cededPolicies;
     const term = searchValue.trim().toLowerCase();
     
-    return savedPolicies.filter(p => {
+    return cededPolicies.filter(p => {
       if (searchField === 'policyNumber') {
         return p.policyNumber.toLowerCase().includes(term);
       } else if (searchField === 'customerId') {
@@ -37,6 +39,87 @@ export default function CessionsView({
     }).format(amount);
   };
 
+  const handleExportCSV = () => {
+    const headers = [
+      'Actual Cession No',
+      'Customer ID',
+      'Policy Number',
+      'Policyholder Name',
+      'Plan Code',
+      'Plan Name',
+      'DOB',
+      'Age',
+      'Gender',
+      'Smoker',
+      'Medical',
+      'Impairment',
+      'Risk Coverage',
+      'Sum Assured Base',
+      'Date of Commencement',
+      'Treaty Name',
+      'Gross Reserves',
+      'Reinsurer Payment Freq',
+      'Policyholder Payment Freq',
+      'EMR Percentage',
+      'Other Extra Premium',
+      'Sum At Risk',
+      'Sum Ceded',
+      'Premium Rate',
+      'Model Factor',
+      'Premium Amount',
+      'Reinsurer Splits'
+    ];
+
+    const rows = filteredPolicies.map(p => {
+      const splits = p.reinsurerSplits && p.reinsurerSplits.length > 0
+        ? p.reinsurerSplits.map(s => `${s.name}: ${s.sharePercentage}%`).join(' | ')
+        : 'N/A';
+
+      return [
+        p.actualCessionNo ?? '',
+        p.customerId,
+        p.policyNumber,
+        p.policyHolderName,
+        p.planCode ?? '',
+        p.planName ?? '',
+        p.dob,
+        p.age,
+        p.gender,
+        p.smoker,
+        p.medical,
+        p.impairment,
+        p.riskCoverage,
+        p.sumAssured,
+        p.dateOfCommencement,
+        p.treatyName,
+        p.grossReserves,
+        p.reinsurerPaymentFrequency,
+        p.policyholderPremiumFrequency,
+        p.emrPercentage,
+        p.otherExtraPremium,
+        p.sumAtRisk,
+        p.sumCeded,
+        p.premiumRate ?? '',
+        p.modelFactor ?? '',
+        p.premiumAmount ?? '',
+        splits
+      ];
+    });
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `cessions_export_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-start">
@@ -44,6 +127,13 @@ export default function CessionsView({
           <h2 className="text-xl font-semibold text-slate-900">Cessions Database</h2>
           <p className="text-sm text-slate-500 mt-1">View, search and manage computed reinsurance cessions.</p>
         </div>
+        <button
+          onClick={handleExportCSV}
+          className="flex items-center gap-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 px-4 py-2 rounded-md font-medium text-sm transition-colors"
+        >
+          <Download className="w-4 h-4" />
+          Export to CSV
+        </button>
       </div>
 
       <div className="bg-white border border-slate-200 rounded-lg shadow-sm">
@@ -81,9 +171,9 @@ export default function CessionsView({
               <tr>
                 <th scope="col" className="px-6 py-3 text-left font-semibold text-slate-500 uppercase tracking-wider">Cess. No</th>
                 <th scope="col" className="px-6 py-3 text-left font-semibold text-slate-500 uppercase tracking-wider">Customer / Policy</th>
-                <th scope="col" className="px-6 py-3 text-left font-semibold text-slate-500 uppercase tracking-wider">Details</th>
                 <th scope="col" className="px-6 py-3 text-left font-semibold text-slate-500 uppercase tracking-wider">Treaty / Coverage</th>
                 <th scope="col" className="px-6 py-3 text-right font-semibold text-slate-500 uppercase tracking-wider">Sum Ceded</th>
+                <th scope="col" className="px-6 py-3 text-left font-semibold text-slate-500 uppercase tracking-wider">Reinsurer Split</th>
                 <th scope="col" className="px-6 py-3 text-right font-semibold text-slate-500 uppercase tracking-wider">Premium Amount</th>
                 <th scope="col" className="px-6 py-3 text-center font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
               </tr>
@@ -107,18 +197,28 @@ export default function CessionsView({
                       <div className="text-xs text-slate-500">Pol: {p.policyNumber || 'N/A'}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-slate-900">{p.gender}, DOB: {p.dob || 'N/A'}</div>
-                      <div className="text-xs text-slate-500 flex gap-1 mt-0.5">
-                        <span className="bg-slate-100 px-1 py-0.5 rounded">{p.smoker}</span>
-                        <span className="bg-slate-100 px-1 py-0.5 rounded">{p.medical}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-slate-900">{p.treatyName}</div>
                       <div className="text-xs text-slate-500">{p.riskCoverage}</div>
+                      {(p.planName || p.planCode) && (
+                        <div className="text-xs text-blue-600 mt-0.5" title="Plan">
+                          {p.planName} {p.planCode ? `(${p.planCode})` : ''}
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right font-mono text-emerald-600">
                       {formatCurrency(p.sumCeded)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-left text-xs space-y-1">
+                      {p.reinsurerSplits && p.reinsurerSplits.length > 0 ? (
+                        p.reinsurerSplits.map((split, idx) => (
+                          <div key={idx} className="flex justify-between gap-4">
+                            <span className="text-slate-600 truncate max-w-[120px]" title={split.name}>{split.name} ({split.sharePercentage}%)</span>
+                            <span className="font-mono text-slate-900">{formatCurrency(split.premiumAmount)}</span>
+                          </div>
+                        ))
+                      ) : (
+                        <span className="text-slate-400">N/A</span>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right font-mono font-bold text-blue-600">
                       {p.premiumAmount !== null ? formatCurrency(p.premiumAmount) : 'N/A'}
@@ -189,8 +289,8 @@ export default function CessionsView({
                     <div className="grid grid-cols-2"><dt className="text-slate-500">Coverage</dt><dd className="font-medium text-slate-900">{viewPolicy.riskCoverage}</dd></div>
                     <div className="grid grid-cols-2"><dt className="text-slate-500">Sum Assured</dt><dd className="font-medium text-slate-900">{formatCurrency(viewPolicy.sumAssured)}</dd></div>
                     <div className="grid grid-cols-2"><dt className="text-slate-500">Gross Reserves</dt><dd className="font-medium text-slate-900">{formatCurrency(viewPolicy.grossReserves)}</dd></div>
-                    <div className="grid grid-cols-2"><dt className="text-slate-500">Reinsurer Payment Mode</dt><dd className="font-medium text-slate-900">{viewPolicy.reinsurerPaymentMode}</dd></div>
-                    <div className="grid grid-cols-2"><dt className="text-slate-500">Ph Payment Freq</dt><dd className="font-medium text-slate-900">{viewPolicy.policyholderPaymentFreq}</dd></div>
+                    <div className="grid grid-cols-2"><dt className="text-slate-500">Reinsurer Payment Freq</dt><dd className="font-medium text-slate-900">{viewPolicy.reinsurerPaymentFrequency === 1 ? 'Annually' : viewPolicy.reinsurerPaymentFrequency === 2 ? 'Semi-Annually' : viewPolicy.reinsurerPaymentFrequency === 4 ? 'Quarterly' : 'Monthly'}</dd></div>
+                    <div className="grid grid-cols-2"><dt className="text-slate-500">Pol Payment Freq</dt><dd className="font-medium text-slate-900">{viewPolicy.policyholderPremiumFrequency === 1 ? 'Annually' : viewPolicy.policyholderPremiumFrequency === 2 ? 'Semi-Annually' : viewPolicy.policyholderPremiumFrequency === 4 ? 'Quarterly' : 'Monthly'}</dd></div>
                   </dl>
                 </div>
                 
@@ -199,11 +299,35 @@ export default function CessionsView({
                   <dl className="space-y-3 text-sm">
                     <div className="grid grid-cols-2"><dt className="text-slate-500">Sum At Risk</dt><dd className="font-medium text-slate-900">{formatCurrency(viewPolicy.sumAtRisk)}</dd></div>
                     <div className="grid grid-cols-2"><dt className="text-slate-500">Sum Ceded</dt><dd className="font-medium text-slate-900">{formatCurrency(viewPolicy.sumCeded)}</dd></div>
-                    <div className="grid grid-cols-2"><dt className="text-slate-500">Resolved Premium Rate</dt><dd className="font-medium text-slate-900">{viewPolicy.resolvedPremiumRate !== null ? viewPolicy.resolvedPremiumRate : 'N/A'}</dd></div>
-                    <div className="grid grid-cols-2"><dt className="text-slate-500">Resolved Model Factor</dt><dd className="font-medium text-slate-900">{viewPolicy.resolvedModelFactor !== null ? viewPolicy.resolvedModelFactor : 'N/A'}</dd></div>
                     <div className="grid grid-cols-2 bg-blue-50/50 p-2 rounded-md -mx-2"><dt className="text-blue-700 font-medium">Reinsurance Premium</dt><dd className="font-bold text-blue-700">{viewPolicy.premiumAmount !== null ? formatCurrency(viewPolicy.premiumAmount) : 'N/A'}</dd></div>
                   </dl>
                 </div>
+
+                {viewPolicy.reinsurerSplits && viewPolicy.reinsurerSplits.length > 0 && (
+                  <div className="md:col-span-2">
+                    <h4 className="text-sm font-semibold text-slate-900 border-b border-slate-200 pb-2 mb-4">Reinsurer Premium Distribution</h4>
+                    <div className="bg-white border text-sm border-slate-200 rounded overflow-hidden">
+                      <table className="min-w-full divide-y divide-slate-200">
+                        <thead className="bg-slate-100/50">
+                          <tr>
+                            <th className="px-4 py-2 text-left font-medium text-slate-500">Reinsurer</th>
+                            <th className="px-4 py-2 text-right font-medium text-slate-500">Share %</th>
+                            <th className="px-4 py-2 text-right font-medium text-slate-500">Premium Amount</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-mono">
+                          {viewPolicy.reinsurerSplits.map((r, i) => (
+                            <tr key={i}>
+                              <td className="px-4 py-2 text-slate-700 font-sans">{r.name}</td>
+                              <td className="px-4 py-2 text-right text-slate-700">{r.sharePercentage.toFixed(2)}%</td>
+                              <td className="px-4 py-2 text-right font-medium text-emerald-600">{formatCurrency(r.premiumAmount)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
             
