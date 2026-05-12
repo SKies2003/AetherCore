@@ -582,7 +582,7 @@ export default function CalculatorView({
     <div className="space-y-6">
       <div className="flex justify-between items-start">
         <div>
-          <h2 className="text-xl font-semibold text-slate-900">Policy Level Premium Calculator</h2>
+          <h2 className="text-xl font-semibold text-slate-900">Premium Calculator</h2>
           <p className="text-sm text-slate-500 mt-1">Compute Sum At Risk, Sum Ceded, and final payable Reinsurance Premium.</p>
         </div>
         <div className="flex items-center gap-3">

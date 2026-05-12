@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Activity, ShieldCheck, FileText, Calculator, Settings, AlertCircle } from 'lucide-react';
+import { Activity, ShieldCheck, FileText, Calculator, Settings, AlertCircle, Building2 } from 'lucide-react';
 import { Treaty, MasterConfig, SavedPolicy } from './types';
 import TreatiesView from './components/TreatiesView';
 import CalculatorView from './components/CalculatorView';
@@ -8,10 +8,18 @@ import CessionsView from './components/CessionsView';
 import AccountsView from './components/AccountsView';
 import PlansView from './components/PlansView';
 import FacultativeView from './components/FacultativeView';
-import { Plan } from './types';
+import CompanyView from './components/CompanyView';
+import { Plan, CedingCompanyConfig } from './types';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'treaties' | 'plans' | 'calculator' | 'master' | 'cessions' | 'accounts' | 'facultative'>('calculator');
+  const [activeTab, setActiveTab] = useState<'company' | 'treaties' | 'plans' | 'calculator' | 'master' | 'cessions' | 'accounts' | 'facultative'>('company');
+  
+  const [companyConfig, setCompanyConfig] = useState<CedingCompanyConfig>({
+    name: '',
+    currency: '',
+    lineOfBusiness: '',
+    reinsurers: [],
+  });
   
   // App-level state for treaties
   const [treaties, setTreaties] = useState<Treaty[]>([]);
@@ -24,6 +32,9 @@ export default function App() {
     medicalMappings: [],
     impairmentMappings: [],
     paymentModeMappings: [],
+    policyStatusMappings: [],
+    emrCodeMappings: [],
+    occupationCodeMappings: [],
   });
 
   const [savedPolicies, setSavedPolicies] = useState<SavedPolicy[]>([]);
@@ -48,7 +59,7 @@ export default function App() {
           <div className="bg-blue-600 p-1.5 rounded-lg text-white">
             <ShieldCheck className="w-6 h-6" />
           </div>
-          <span className="font-bold text-lg tracking-tight">ReSure Pro</span>
+          <span className="font-bold text-lg tracking-tight">AetherCore</span>
         </div>
         
         <nav className="flex-1 py-6 px-4 space-y-1">
@@ -56,6 +67,18 @@ export default function App() {
             Modules
           </div>
           
+          <button
+            onClick={() => setActiveTab('company')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              activeTab === 'company' 
+                ? 'bg-blue-600/10 text-blue-400' 
+                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+            }`}
+          >
+            <Building2 className="w-5 h-5" />
+            Company
+          </button>
+
           <button
             onClick={() => setActiveTab('calculator')}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
@@ -140,37 +163,20 @@ export default function App() {
             Accounts
           </button>
         </nav>
-
-        <div className="p-4 border-t border-slate-800">
-          <div className="flex items-center gap-3 text-sm text-slate-400 group cursor-pointer hover:text-white transition-colors">
-            <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-slate-300 font-medium group-hover:bg-slate-600 transition-colors">
-              U
-            </div>
-            <div className="flex flex-col">
-              <span className="font-medium text-slate-200">Actuary User</span>
-              <span className="text-xs">v1.1.0 iter</span>
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* Main Content Area */}
       <main className="flex-1 ml-64 min-h-screen max-w-7xl">
-        <header className="bg-white px-8 py-5 border-b border-slate-200 flex items-center justify-between sticky top-0 z-10 hidden sm:flex">
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-800">
-            {activeTab === 'calculator' ? 'Input' : activeTab === 'plans' ? 'Plans' : activeTab === 'treaties' ? 'Treaties' : activeTab === 'master' ? 'Master' : activeTab === 'cessions' ? 'Cessions' : activeTab === 'facultative' ? 'Facultative' : 'Accounts'}
-          </h1>
-          <div className="flex items-center gap-2 text-sm text-slate-500">
-            <Activity className="w-4 h-4 text-green-500" />
-            <span>Systems Online</span>
-          </div>
-        </header>
-        
         <div className="p-8">
+          <div className={activeTab === 'company' ? 'block' : 'hidden'}>
+            <CompanyView config={companyConfig} setConfig={setCompanyConfig} treaties={treaties} />
+          </div>
+
           <div className={activeTab === 'plans' ? 'block' : 'hidden'}>
             <PlansView 
               plans={plans} 
               setPlans={setPlans}
+              savedPolicies={savedPolicies}
             />
           </div>
 
@@ -180,6 +186,8 @@ export default function App() {
               onAddTreaty={handleAddTreaty} 
               onUpdateTreaty={handleUpdateTreaty}
               onDeleteTreaty={handleDeleteTreaty}
+              companyConfig={companyConfig}
+              savedPolicies={savedPolicies}
             />
           </div>
 

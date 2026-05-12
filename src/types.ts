@@ -20,6 +20,9 @@ export interface MasterConfig {
   medicalMappings: MappingEntry[];
   impairmentMappings: MappingEntry[];
   paymentModeMappings: MappingEntry[];
+  policyStatusMappings: MappingEntry[];
+  emrCodeMappings: MappingEntry[];
+  occupationCodeMappings: MappingEntry[];
 }
 
 export interface ModelFactorEntry {
@@ -115,3 +118,17 @@ export interface Plan {
   riskCoverage: string;
   type: 'Base' | 'Rider';
 }
+
+export interface ReinsurerCompany {
+  id: string;
+  reinsurerId: string;
+  name: string;
+}
+
+export interface CedingCompanyConfig {
+  name: string;
+  currency: string;
+  lineOfBusiness: 'Individual Domestic' | 'Credit Life' | 'Group Life' | '';
+  reinsurers: ReinsurerCompany[];
+}
+

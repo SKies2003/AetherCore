@@ -28,6 +28,9 @@ export default function MasterView({
     appendMappings('Medical Status', config.medicalMappings);
     appendMappings('Impairment', config.impairmentMappings);
     appendMappings('Payment Mode', config.paymentModeMappings);
+    appendMappings('Policy Status', config.policyStatusMappings);
+    appendMappings('EMR Code', config.emrCodeMappings);
+    appendMappings('Occupation Code', config.occupationCodeMappings);
 
     const csvContent = headers.map(escapeCsv).join(',') + '\n' + rows.join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -82,7 +85,10 @@ export default function MasterView({
         'Smoker Status': 'smokerMappings',
         'Medical Status': 'medicalMappings',
         'Impairment': 'impairmentMappings',
-        'Payment Mode': 'paymentModeMappings'
+        'Payment Mode': 'paymentModeMappings',
+        'Policy Status': 'policyStatusMappings',
+        'EMR Code': 'emrCodeMappings',
+        'Occupation Code': 'occupationCodeMappings'
       };
 
       for (let i = 1; i < rows.length; i++) {
@@ -286,6 +292,27 @@ export default function MasterView({
           'Map incoming policyholder payment frequency to system variations.',
           'paymentModeMappings',
           ['Annual', 'Semi-Annual', 'Quarterly', 'Monthly', 'Single']
+        )}
+
+        {renderMappingSection(
+          'Policy Status Mapping',
+          'Map incoming policy status to standard tracking equivalents.',
+          'policyStatusMappings',
+          ['Active', 'Inactive', 'Lapsed', 'Matured', 'Death Claim', 'Surrendered']
+        )}
+
+        {renderMappingSection(
+          'EMR Code Mapping',
+          'Map incoming Extra Mortality Ratings (EMR) or standard risk categories.',
+          'emrCodeMappings',
+          ['Standard', 'Class 1 (+25%)', 'Class 2 (+50%)', 'Class 3 (+75%)', 'Class 4 (+100%)', 'Class 5 (+125%)', 'Class 6 (+150%)', 'Declined']
+        )}
+
+        {renderMappingSection(
+          'Occupation Code Mapping',
+          'Map incoming occupational codes/descriptions to standardized classes.',
+          'occupationCodeMappings',
+          ['Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5']
         )}
       </div>
     </div>

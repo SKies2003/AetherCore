@@ -1,18 +1,22 @@
 import React, { useState } from 'react';
-import { Treaty, RetentionType } from '../types';
-import { Plus, Trash2, FileText, ChevronDown, ChevronRight, CheckCircle2, Download, Upload, Edit2, X } from 'lucide-react';
+import { Treaty, RetentionType, CedingCompanyConfig, SavedPolicy } from '../types';
+import { Plus, Trash2, FileText, ChevronDown, ChevronRight, CheckCircle2, Download, Upload, Edit2, X, AlertCircle } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 export default function TreatiesView({
   treaties,
   onAddTreaty,
   onUpdateTreaty,
-  onDeleteTreaty
+  onDeleteTreaty,
+  companyConfig,
+  savedPolicies
 }: {
   treaties: Treaty[];
   onAddTreaty: (t: Treaty | Treaty[]) => void;
   onUpdateTreaty: (t: Treaty) => void;
   onDeleteTreaty: (id: string) => void;
+  companyConfig: CedingCompanyConfig;
+  savedPolicies: SavedPolicy[];
 }) {
   const [name, setName] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -24,6 +28,7 @@ export default function TreatiesView({
   const [reinsurerPaymentFrequency, setReinsurerPaymentFrequency] = useState<number>(1);
   const [reinsurerModelFactor, setReinsurerModelFactor] = useState<string>('1.0');
   const [selectionDiscount, setSelectionDiscount] = useState<string>('0');
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [premiumRates, setPremiumRates] = useState<Array<{ id: string, riskCoverage: string, ageMin: string, ageMax: string, gender: string, rate: string }>>([
     { id: crypto.randomUUID(), riskCoverage: 'Death Benefit', ageMin: '18', ageMax: '65', gender: 'Any', rate: '2.5' }
@@ -239,6 +244,16 @@ export default function TreatiesView({
     setSelectionDiscount('0');
     setPremiumRates([{ id: crypto.randomUUID(), riskCoverage: 'Death Benefit', ageMin: '18', ageMax: '65', gender: 'Any', rate: '2.5' }]);
     setReinsurers([{ id: crypto.randomUUID(), name: 'Global Re', sharePercentage: '100' }]);
+  };
+
+  const handleDelete = (id: string, name: string) => {
+    const isUsed = savedPolicies.some(p => p.treatyId === id);
+    if (isUsed) {
+      setDeleteError(`Cannot delete ${name}. It is assigned to one or more calculated cessions.`);
+      setTimeout(() => setDeleteError(null), 5000);
+      return;
+    }
+    onDeleteTreaty(id);
   };
 
   const updatePremiumRate = (id: string, field: string, val: string) => {
@@ -521,14 +536,19 @@ export default function TreatiesView({
                 {reinsurers.map((r) => (
                   <tr key={r.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-2 py-1.5">
-                      <input 
-                        type="text" 
+                      <select 
                         value={r.name} 
                         onChange={e => updateReinsurer(r.id, 'name', e.target.value)} 
-                        className="w-full rounded border-slate-300 py-1 px-2 text-sm focus:ring-blue-500 focus:border-blue-500 border" 
-                        placeholder="e.g. Swiss Re"
+                        className="w-full rounded border-slate-300 py-1 px-2 text-sm focus:ring-blue-500 focus:border-blue-500 border bg-white" 
                         required 
-                      />
+                      >
+                        <option value="">Select Reinsurer ID...</option>
+                        {companyConfig?.reinsurers?.map(re => (
+                          <option key={re.id} value={`${re.reinsurerId} - ${re.name}`}>
+                            {re.reinsurerId} - {re.name}
+                          </option>
+                        ))}
+                      </select>
                     </td>
                     <td className="px-2 py-1.5">
                       <input 
@@ -608,6 +628,13 @@ export default function TreatiesView({
           </span>
         </div>
         
+        {deleteError && (
+          <div className="m-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+            <div className="text-sm font-medium">{deleteError}</div>
+          </div>
+        )}
+
         {treaties.length === 0 ? (
           <div className="p-8 flex flex-col items-center justify-center text-slate-400 min-h-[200px]">
             <FileText className="w-12 h-12 mb-3 text-slate-300" />
@@ -654,7 +681,7 @@ export default function TreatiesView({
                       <Edit2 className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={(e) => { e.stopPropagation(); onDeleteTreaty(treaty.id); }}
+                      onClick={(e) => { e.stopPropagation(); handleDelete(treaty.id, treaty.name); }}
                       className="text-slate-400 hover:text-red-600 transition-colors p-2 rounded-md hover:bg-red-50 opacity-0 group-hover:opacity-100 focus:opacity-100"
                       title="Delete Treaty"
                     >

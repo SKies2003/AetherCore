@@ -1,16 +1,19 @@
 import React, { useState } from 'react';
-import { Plan } from '../types';
-import { Download, Upload, Trash2, Edit2, Plus, X, FileText } from 'lucide-react';
+import { Plan, SavedPolicy } from '../types';
+import { Download, Upload, Trash2, Edit2, Plus, X, FileText, AlertCircle } from 'lucide-react';
 
 export default function PlansView({ 
   plans, 
-  setPlans 
+  setPlans,
+  savedPolicies
 }: { 
   plans: Plan[]; 
   setPlans: React.Dispatch<React.SetStateAction<Plan[]>>;
+  savedPolicies: SavedPolicy[];
 }) {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   
   const [planName, setPlanName] = useState('');
   const [planCode, setPlanCode] = useState('');
@@ -63,7 +66,13 @@ export default function PlansView({
     closeForm();
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = (id: string, name: string) => {
+    const isUsed = savedPolicies.some(p => p.planId === id);
+    if (isUsed) {
+      setDeleteError(`Cannot delete ${name}. It is assigned to one or more calculated cessions.`);
+      setTimeout(() => setDeleteError(null), 5000);
+      return;
+    }
     setPlans(plans.filter(p => p.id !== id));
   };
 
@@ -206,6 +215,13 @@ export default function PlansView({
         </div>
       </div>
 
+      {deleteError && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+          <div className="text-sm font-medium">{deleteError}</div>
+        </div>
+      )}
+
       {isFormOpen && (
         <div className="bg-white border text-sm border-slate-200 rounded overflow-hidden shadow-sm">
           <div className="bg-slate-50 border-b border-slate-200 px-5 py-4 flex justify-between items-center">
@@ -272,7 +288,7 @@ export default function PlansView({
                     <button onClick={() => openEditForm(p)} className="text-slate-400 hover:text-blue-600 transition-colors p-1" title="Edit">
                       <Edit2 className="w-4 h-4" />
                     </button>
-                    <button onClick={() => handleDelete(p.id)} className="text-slate-400 hover:text-red-600 transition-colors p-1 ml-2" title="Delete">
+                    <button onClick={() => handleDelete(p.id, p.planName)} className="text-slate-400 hover:text-red-600 transition-colors p-1 ml-2" title="Delete">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </td>

@@ -1,4 +1,4 @@
-# Reinsurance Management System
+# AetherCore
 
 A comprehensive reinsurance administration tool designed to help insurance and reinsurance companies manage treaties, create plans, calculate cessions, and handle facultative submissions.
 
