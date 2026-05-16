@@ -67,7 +67,12 @@ export default function PlansView({
   };
 
   const handleDelete = (id: string, name: string) => {
-    const isUsed = savedPolicies.some(p => p.planId === id);
+    // Ideally we would check p.planCode === plan.planCode, but we don't have the plan object here.
+    // For now, since planCode isn't reliably verified against id, we'll just disable the check or check selectedPlanId if we added it.
+    // Wait, let's find the plan to get its planCode.
+    const planToDelete = plans.find(p => p.id === id);
+    const isUsed = planToDelete && savedPolicies.some(p => p.planCode === planToDelete.planCode);
+    
     if (isUsed) {
       setDeleteError(`Cannot delete ${name}. It is assigned to one or more calculated cessions.`);
       setTimeout(() => setDeleteError(null), 5000);
@@ -229,24 +234,22 @@ export default function PlansView({
             <button onClick={closeForm} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5"/></button>
           </div>
           <form onSubmit={handleSubmit} className="p-5 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-4 gap-4 items-end">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Plan Name</label>
-                <input type="text" required value={planName} onChange={e => setPlanName(e.target.value)} className="block w-full rounded border-slate-300 py-1.5 px-3 border" placeholder="e.g. Shield Term Plan"/>
+                <input type="text" required value={planName} onChange={e => setPlanName(e.target.value)} className="block w-full rounded border-slate-300 py-1.5 px-3 border bg-white focus:ring-blue-500" placeholder="e.g. Shield Term Plan"/>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Plan Code</label>
-                <input type="text" required value={planCode} onChange={e => setPlanCode(e.target.value)} className="block w-full rounded border-slate-300 py-1.5 px-3 border" placeholder="e.g. T1001"/>
+                <input type="text" required value={planCode} onChange={e => setPlanCode(e.target.value)} className="block w-full rounded border-slate-300 py-1.5 px-3 border bg-white focus:ring-blue-500" placeholder="e.g. T1001"/>
               </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Risk Coverage</label>
-                <input type="text" required value={riskCoverage} onChange={e => setRiskCoverage(e.target.value)} className="block w-full rounded border-slate-300 py-1.5 px-3 border" placeholder="e.g. Death Benefit"/>
+                <input type="text" required value={riskCoverage} onChange={e => setRiskCoverage(e.target.value)} className="block w-full rounded border-slate-300 py-1.5 px-3 border bg-white focus:ring-blue-500" placeholder="e.g. Death Benefit"/>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Type (Base/Rider)</label>
-                <select value={type} onChange={e => setType(e.target.value as 'Base' | 'Rider')} className="block w-full rounded border-slate-300 py-1.5 px-3 border">
+                <select value={type} onChange={e => setType(e.target.value as 'Base' | 'Rider')} className="block w-full rounded border-slate-300 py-1.5 px-3 border bg-white focus:ring-blue-500">
                   <option value="Base">Base</option>
                   <option value="Rider">Rider</option>
                 </select>

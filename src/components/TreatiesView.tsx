@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Treaty, RetentionType, CedingCompanyConfig, SavedPolicy } from '../types';
-import { Plus, Trash2, FileText, ChevronDown, ChevronRight, CheckCircle2, Download, Upload, Edit2, X, AlertCircle } from 'lucide-react';
+import { Treaty, RetentionType, CedingCompanyConfig, SavedPolicy, SubTreaty, PaymentFrequency, ReserveTableEntry, Plan } from '../types';
+import { Plus, Trash2, FileText, ChevronDown, ChevronRight, CheckCircle2, Download, Upload, Edit2, X, AlertCircle, Calculator, ShieldCheck, Save } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 export default function TreatiesView({
@@ -9,7 +9,9 @@ export default function TreatiesView({
   onUpdateTreaty,
   onDeleteTreaty,
   companyConfig,
-  savedPolicies
+  savedPolicies,
+  reserveTables = [],
+  plans = []
 }: {
   treaties: Treaty[];
   onAddTreaty: (t: Treaty | Treaty[]) => void;
@@ -17,213 +19,163 @@ export default function TreatiesView({
   onDeleteTreaty: (id: string) => void;
   companyConfig: CedingCompanyConfig;
   savedPolicies: SavedPolicy[];
+  reserveTables?: ReserveTableEntry[];
+  plans?: Plan[];
 }) {
   const [name, setName] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [retentionType, setRetentionType] = useState<RetentionType>('absolute');
-  const [retentionValue, setRetentionValue] = useState<string>('');
-  const [facultativeLimit, setFacultativeLimit] = useState<string>('');
-  
-  const [reinsurerPaymentFrequency, setReinsurerPaymentFrequency] = useState<number>(1);
-  const [reinsurerModelFactor, setReinsurerModelFactor] = useState<string>('1.0');
-  const [selectionDiscount, setSelectionDiscount] = useState<string>('0');
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-
-  const [premiumRates, setPremiumRates] = useState<Array<{ id: string, riskCoverage: string, ageMin: string, ageMax: string, gender: string, rate: string }>>([
-    { id: crypto.randomUUID(), riskCoverage: 'Death Benefit', ageMin: '18', ageMax: '65', gender: 'Any', rate: '2.5' }
-  ]);
-
-  const [reinsurers, setReinsurers] = useState<Array<{ id: string, name: string, sharePercentage: string }>>([
-    { id: crypto.randomUUID(), name: 'Global Re', sharePercentage: '100' }
-  ]);
+  const [subTreaties, setSubTreaties] = useState<SubTreaty[]>([]);
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const [isSubTreatyModalOpen, setIsSubTreatyModalOpen] = useState(false);
+  const [currentSubTreatyIndex, setCurrentSubTreatyIndex] = useState<number | null>(null);
+  const [currentSubTreaty, setCurrentSubTreaty] = useState<SubTreaty | null>(null);
+
+  const displayedTreaties = treaties.filter(t => !t.lineOfBusiness || t.lineOfBusiness === companyConfig.lineOfBusiness);
+
+  const uniquePremiumTableIds = Array.from(new Set(reserveTables.map(rt => rt.premiumTableId))).sort();
+  const uniqueCoverages = Array.from(new Set(plans.map(p => p.riskCoverage).filter(Boolean))).sort();
+
+  const openAddSubTreatyModal = () => {
+    setCurrentSubTreaty({
+      id: crypto.randomUUID(),
+      name: `${name ? name + '-' : 'Sub-Treaty '}${subTreaties.length + 1}`,
+      retentionType: 'absolute',
+      retentionValue: 0,
+      facultativeLimit: 0,
+      reinsurerPaymentFrequency: 1,
+      reinsurerModelFactor: 1.0,
+      selectionDiscount: 0,
+      premiumRates: [
+        { id: crypto.randomUUID(), premiumTableId: uniquePremiumTableIds[0] || 'Code-1', ageMin: 0, ageMax: 999, gender: 'Any', rate: 0 }
+      ],
+      reinsurers: [
+        { id: crypto.randomUUID(), name: '', sharePercentage: 100 }
+      ]
+    });
+    setCurrentSubTreatyIndex(null);
+    setIsSubTreatyModalOpen(true);
+  };
+
+  const openEditSubTreatyModal = (index: number) => {
+    setCurrentSubTreaty({ ...subTreaties[index] });
+    setCurrentSubTreatyIndex(index);
+    setIsSubTreatyModalOpen(true);
+  };
+
+  const saveSubTreaty = () => {
+    if (!currentSubTreaty) return;
+    const totalShare = currentSubTreaty.reinsurers.reduce((sum, r) => sum + (parseFloat(r.sharePercentage as any) || 0), 0);
+    if (Math.abs(totalShare - 100) > 0.01) {
+      alert(`The total reinsurer share percentage must be exactly 100%. Currently it is ${totalShare}%.`);
+      return;
+    }
+    
+    if (currentSubTreatyIndex !== null) {
+      setSubTreaties(prev => {
+        const arr = [...prev];
+        arr[currentSubTreatyIndex] = currentSubTreaty;
+        return arr;
+      });
+    } else {
+      setSubTreaties([...subTreaties, currentSubTreaty]);
+    }
+    closeSubTreatyModal();
+  };
+
+  const closeSubTreatyModal = () => {
+    setIsSubTreatyModalOpen(false);
+    setCurrentSubTreaty(null);
+    setCurrentSubTreatyIndex(null);
+  };
+
+  const removeSubTreaty = (id: string) => {
+    setSubTreaties(prev => prev.filter(st => st.id !== id));
+  };
+
+  const updateCurrentSubTreaty = (field: string, val: any) => {
+    if (currentSubTreaty) {
+      setCurrentSubTreaty({ ...currentSubTreaty, [field]: val });
+    }
+  };
+
+  const updateCurrentSTPremiumRate = (prId: string, field: string, val: any) => {
+    if (currentSubTreaty) {
+      setCurrentSubTreaty({
+        ...currentSubTreaty,
+        premiumRates: currentSubTreaty.premiumRates.map(pr => pr.id === prId ? { ...pr, [field]: val } : pr)
+      });
+    }
+  };
+
+  const updateCurrentSTReinsurer = (rId: string, field: string, val: any) => {
+    if (currentSubTreaty) {
+      setCurrentSubTreaty({
+        ...currentSubTreaty,
+        reinsurers: currentSubTreaty.reinsurers.map(r => r.id === rId ? { ...r, [field]: val } : r)
+      });
+    }
+  };
 
   const openEdit = (t: Treaty) => {
     setEditingId(t.id);
     setName(t.name);
     setStartDate(t.startDate);
     setEndDate(t.endDate);
-    setRetentionType(t.retentionType);
-    setRetentionValue(t.retentionValue.toString());
-    setFacultativeLimit(t.facultativeLimit?.toString() || '');
-    setReinsurerPaymentFrequency(t.reinsurerPaymentFrequency);
-    setReinsurerModelFactor(t.reinsurerModelFactor?.toString() || '1.0');
-    setSelectionDiscount(t.selectionDiscount?.toString() || '0');
-    setPremiumRates(t.premiumRates.map(pr => ({
-      id: pr.id,
-      riskCoverage: pr.riskCoverage,
-      ageMin: pr.ageMin.toString(),
-      ageMax: pr.ageMax.toString(),
-      gender: pr.gender,
-      rate: pr.rate.toString()
-    })));
-    setReinsurers(t.reinsurers.map(r => ({
-      id: r.id,
-      name: r.name,
-      sharePercentage: r.sharePercentage.toString()
-    })));
+    setSubTreaties(t.subTreaties);
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const handleExport = () => {
-    const wb = XLSX.utils.book_new();
-
-    // 1. Treaties
-    const treatiesData = treaties.map(t => ({
-      'Treaty Name': t.name,
-      'Start Date': t.startDate,
-      'End Date': t.endDate,
-      'Retention Type': t.retentionType,
-      'Retention Value': t.retentionValue,
-      'Facultative Limit': t.facultativeLimit,
-      'Payment Frequency': t.reinsurerPaymentFrequency,
-      'Model Factor': t.reinsurerModelFactor,
-      'Selection Discount': t.selectionDiscount
-    }));
-    const wsTreaties = XLSX.utils.json_to_sheet(treatiesData);
-    XLSX.utils.book_append_sheet(wb, wsTreaties, "Treaties");
-
-    // 2. Reinsurers
-    const reinsurersData: any[] = [];
-    treaties.forEach(t => {
-      t.reinsurers?.forEach(r => {
-        reinsurersData.push({
-          'Treaty Name': t.name,
-          'Reinsurer Name': r.name,
-          'Share %': r.sharePercentage
-        });
-      });
-    });
-    const wsReinsurers = XLSX.utils.json_to_sheet(reinsurersData);
-    XLSX.utils.book_append_sheet(wb, wsReinsurers, "Reinsurers");
-
-    // Model Factors removed from individual sheet export
-
-    // 4. Premium Rates
-    const prData: any[] = [];
-    treaties.forEach(t => {
-      t.premiumRates?.forEach(pr => {
-        prData.push({
-          'Treaty Name': t.name,
-          'Risk Coverage': pr.riskCoverage,
-          'Min Age': pr.ageMin,
-          'Max Age': pr.ageMax,
-          'Gender': pr.gender,
-          'Rate': pr.rate
-        });
-      });
-    });
-    const wsPr = XLSX.utils.json_to_sheet(prData);
-    XLSX.utils.book_append_sheet(wb, wsPr, "Premium Rates");
-
-    XLSX.writeFile(wb, "Treaties_Export.xlsx");
-  };
-
-  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const data = new Uint8Array(event.target?.result as ArrayBuffer);
-        const wb = XLSX.read(data, { type: 'array' });
-        
-        const treatiesSheet = wb.Sheets["Treaties"] ? XLSX.utils.sheet_to_json<any>(wb.Sheets["Treaties"]) : [];
-        const reinsurersSheet = wb.Sheets["Reinsurers"] ? XLSX.utils.sheet_to_json<any>(wb.Sheets["Reinsurers"]) : [];
-        const prSheet = wb.Sheets["Premium Rates"] ? XLSX.utils.sheet_to_json<any>(wb.Sheets["Premium Rates"]) : [];
-
-        const existingNames = new Set(treaties.map(t => t.name.toLowerCase()));
-        const newTreaties: Treaty[] = [];
-
-        treatiesSheet.forEach(tRow => {
-          const name = tRow['Treaty Name']?.toString().trim();
-          if (!name || existingNames.has(name.toLowerCase())) return;
-
-          existingNames.add(name.toLowerCase());
-
-          const reinsurersRows = reinsurersSheet.filter(r => r['Treaty Name']?.toString().trim().toLowerCase() === name.toLowerCase());
-          const prRows = prSheet.filter(pr => pr['Treaty Name']?.toString().trim().toLowerCase() === name.toLowerCase());
-
-          newTreaties.push({
-            id: crypto.randomUUID(),
-            name,
-            startDate: tRow['Start Date']?.toString() || '',
-            endDate: tRow['End Date']?.toString() || '',
-            retentionType: (tRow['Retention Type'] === 'absolute' || tRow['Retention Type'] === 'percentage') ? tRow['Retention Type'] : 'absolute',
-            retentionValue: parseFloat(tRow['Retention Value']) || 0,
-            facultativeLimit: parseFloat(tRow['Facultative Limit']) || 0,
-            reinsurerPaymentFrequency: parseInt(tRow['Payment Frequency']) || 1 as any,
-            reinsurerModelFactor: parseFloat(tRow['Model Factor']) || 1,
-            selectionDiscount: parseFloat(tRow['Selection Discount']) || 0,
-            reinsurers: reinsurersRows.map(r => ({
-              id: crypto.randomUUID(),
-              name: r['Reinsurer Name']?.toString() || '',
-              sharePercentage: parseFloat(r['Share %']) || 0
-            })),
-            premiumRates: prRows.map(pr => ({
-              id: crypto.randomUUID(),
-              riskCoverage: pr['Risk Coverage']?.toString() || '',
-              ageMin: parseInt(pr['Min Age']) || 0,
-              ageMax: parseInt(pr['Max Age']) || 0,
-              gender: pr['Gender']?.toString() || 'Any',
-              rate: parseFloat(pr['Rate']) || 0
-            }))
-          });
-        });
-
-        if (newTreaties.length > 0) {
-          onAddTreaty(newTreaties);
-        }
-      } catch (err) {
-        console.error("Failed to parse file", err);
-      }
-    };
-    reader.readAsArrayBuffer(file);
-    e.target.value = '';
   };
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !retentionValue || !startDate || !endDate) return;
+    if (!name || !startDate || !endDate) return;
 
     if (new Date(startDate) > new Date(endDate)) {
       alert("Start date cannot be after end date.");
       return;
     }
 
-    const totalShare = reinsurers.reduce((sum, r) => sum + (parseFloat(r.sharePercentage) || 0), 0);
-    if (Math.abs(totalShare - 100) > 0.01) {
-      alert(`The total reinsurer share percentage must be exactly 100%. Currently it is ${totalShare}%.`);
+    for (const st of subTreaties) {
+      const totalShare = st.reinsurers.reduce((sum, r) => sum + (parseFloat(r.sharePercentage as any) || 0), 0);
+      if (Math.abs(totalShare - 100) > 0.01) {
+        alert(`In Sub-Treaty "${st.name}", the total reinsurer share percentage must be exactly 100%. Currently it is ${totalShare}%.`);
+        return;
+      }
+    }
+
+    if (!companyConfig.lineOfBusiness) {
+      alert("Please select a Line of Business in the Company Configuration before setting up treaties.");
       return;
     }
 
-    const treatyData = {
+    const treatyData: Treaty = {
       id: editingId || crypto.randomUUID(),
       name,
       startDate,
       endDate,
-      retentionType,
-      retentionValue: parseFloat(retentionValue),
-      facultativeLimit: parseFloat(facultativeLimit) || 0,
-      reinsurerPaymentFrequency: reinsurerPaymentFrequency as any,
-      reinsurerModelFactor: parseFloat(reinsurerModelFactor) || 1,
-      selectionDiscount: parseFloat(selectionDiscount) || 0,
-      premiumRates: premiumRates.map(pr => ({
-        id: crypto.randomUUID(),
-        riskCoverage: pr.riskCoverage,
-        ageMin: parseInt(pr.ageMin) || 0,
-        ageMax: parseInt(pr.ageMax) || 0,
-        gender: pr.gender as any,
-        rate: parseFloat(pr.rate) || 0
-      })),
-      reinsurers: reinsurers.map(r => ({
-        id: crypto.randomUUID(),
-        name: r.name,
-        sharePercentage: Math.min(100, Math.max(0, parseFloat(r.sharePercentage) || 0))
+      lineOfBusiness: companyConfig.lineOfBusiness,
+      subTreaties: subTreaties.map((st, i) => ({
+        ...st,
+        name: st.name || `${name}-${i + 1}`,
+        retentionValue: parseFloat(st.retentionValue as any) || 0,
+        facultativeLimit: parseFloat(st.facultativeLimit as any) || 0,
+        reinsurerPaymentFrequency: Number(st.reinsurerPaymentFrequency) as any,
+        reinsurerModelFactor: parseFloat(st.reinsurerModelFactor as any) || 1,
+        selectionDiscount: parseFloat(st.selectionDiscount as any) || 0,
+        premiumRates: st.premiumRates.map(pr => ({
+          ...pr,
+          ageMin: parseInt(pr.ageMin as any) || 0,
+          ageMax: parseInt(pr.ageMax as any) || 0,
+          rate: parseFloat(pr.rate as any) || 0
+        })),
+        reinsurers: st.reinsurers.map(r => ({
+          ...r,
+          sharePercentage: Math.min(100, Math.max(0, parseFloat(r.sharePercentage as any) || 0))
+        }))
       }))
     };
 
@@ -237,31 +189,17 @@ export default function TreatiesView({
     setName('');
     setStartDate('');
     setEndDate('');
-    setRetentionValue('');
-    setFacultativeLimit('');
-    setReinsurerPaymentFrequency(1);
-    setReinsurerModelFactor('1.0');
-    setSelectionDiscount('0');
-    setPremiumRates([{ id: crypto.randomUUID(), riskCoverage: 'Death Benefit', ageMin: '18', ageMax: '65', gender: 'Any', rate: '2.5' }]);
-    setReinsurers([{ id: crypto.randomUUID(), name: 'Global Re', sharePercentage: '100' }]);
+    setSubTreaties([]);
   };
 
-  const handleDelete = (id: string, name: string) => {
-    const isUsed = savedPolicies.some(p => p.treatyId === id);
+  const handleDelete = (id: string, tname: string) => {
+    const isUsed = savedPolicies.some(p => p.selectedTreatyId === id);
     if (isUsed) {
-      setDeleteError(`Cannot delete ${name}. It is assigned to one or more calculated cessions.`);
+      setDeleteError(`Cannot delete ${tname}. It is assigned to one or more calculated cessions.`);
       setTimeout(() => setDeleteError(null), 5000);
       return;
     }
     onDeleteTreaty(id);
-  };
-
-  const updatePremiumRate = (id: string, field: string, val: string) => {
-    setPremiumRates(prev => prev.map(pr => pr.id === id ? { ...pr, [field]: val } : pr));
-  };
-
-  const updateReinsurer = (id: string, field: string, val: string) => {
-    setReinsurers(prev => prev.map(r => r.id === id ? { ...r, [field]: val } : r));
   };
 
   const toggleExpand = (id: string) => {
@@ -272,319 +210,92 @@ export default function TreatiesView({
     <div className="space-y-6">
       <div className="flex justify-between items-start">
         <div>
-          <h2 className="text-xl font-semibold text-slate-900">Treaty Management</h2>
-          <p className="text-sm text-slate-500 mt-1">Configure reinsurance treaties, retention limits, and rate factors.</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <label className="flex items-center gap-2 bg-white border border-slate-300 text-slate-700 px-4 py-2 rounded-md hover:bg-slate-50 transition-colors font-medium text-sm shadow-sm cursor-pointer">
-            <Upload className="w-4 h-4" />
-            Import XLSX
-            <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImport} />
-          </label>
-          <button
-            onClick={handleExport}
-            className="flex items-center gap-2 bg-slate-800 text-white px-4 py-2 rounded-md hover:bg-slate-700 transition-colors font-medium text-sm shadow-sm"
-          >
-            <Download className="w-4 h-4" />
-            Export Config
-          </button>
+          <h2 className="text-xl font-semibold text-slate-900">Treaties</h2>
+          <p className="text-sm text-slate-500 mt-1">Configure treaties and subtreaties.</p>
         </div>
       </div>
 
       <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
         <div className="p-5 border-b border-slate-200 bg-slate-50/50">
-          <h3 className="text-base font-medium text-slate-800">Add New Treaty</h3>
+          <h3 className="text-base font-medium text-slate-800">{editingId ? 'Update Treaty' : 'Add New Treaty'}</h3>
         </div>
         <form onSubmit={handleAdd} className="p-5 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-            <div className="md:col-span-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Treaty Name</label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Life Quota Share 2024"
-                  className="block w-full rounded-md border-slate-300 py-1.5 px-3 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border ring-1 ring-transparent transition-all"
-                  required
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Start Date</label>
-                  <input
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className="block w-full rounded-md border-slate-300 py-1.5 px-3 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border transition-all"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">End Date</label>
-                  <input
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className="block w-full rounded-md border-slate-300 py-1.5 px-3 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border transition-all"
-                    required
-                  />
-                </div>
-              </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Treaty Name</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Life Quota Share 2024"
+                className="block w-full rounded-md border-slate-300 py-1.5 px-3 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border ring-1 ring-transparent transition-all"
+                required
+              />
             </div>
-            
-            <div className="grid grid-cols-2 gap-2 md:col-span-2">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Retention</label>
-                <select
-                  value={retentionType}
-                  onChange={(e) => setRetentionType(e.target.value as RetentionType)}
-                  className="block w-full rounded-md border-slate-300 py-1.5 px-3 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border transition-all"
-                >
-                  <option value="absolute">Absolute (₹)</option>
-                  <option value="percentage">Quota (%)</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Value</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={retentionValue}
-                  onChange={(e) => setRetentionValue(e.target.value)}
-                  placeholder={retentionType === 'percentage' ? "e.g. 20" : "e.g. 2500000"}
-                  className="block w-full rounded-md border-slate-300 py-1.5 px-3 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border transition-all"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Facultative Limit</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={facultativeLimit}
-                  onChange={(e) => setFacultativeLimit(e.target.value)}
-                  placeholder="e.g. 5000000"
-                  className="block w-full rounded-md border-slate-300 py-1.5 px-3 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border transition-all"
-                  required
-                />
-              </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Start Date</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="block w-full rounded-md border-slate-300 py-1.5 px-3 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border transition-all"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">End Date</label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="block w-full rounded-md border-slate-300 py-1.5 px-3 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border transition-all"
+                required
+              />
             </div>
           </div>
 
-          <div className="border border-slate-200 rounded-md p-4 bg-slate-50/50">
-            <h4 className="text-sm font-semibold text-slate-800 mb-3">Premium & Discount Rules</h4>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Reinsurer Payment Mode</label>
-                <select
-                  value={reinsurerPaymentFrequency}
-                  onChange={(e) => setReinsurerPaymentFrequency(Number(e.target.value))}
-                  className="block w-full rounded-md border-slate-300 py-1.5 px-3 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border transition-all"
-                >
-                  <option value={1}>Annually (1)</option>
-                  <option value={2}>Semi-Annually (2)</option>
-                  <option value={4}>Quarterly (4)</option>
-                  <option value={12}>Monthly (12)</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Model Factor</label>
-                <input
-                  type="number"
-                  step="0.0001"
-                  max="1"
-                  min="0"
-                  value={reinsurerModelFactor}
-                  onChange={(e) => setReinsurerModelFactor(e.target.value)}
-                  className="block w-full rounded-md border-slate-300 py-1.5 px-3 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border transition-all font-mono"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Selection Discount (%)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  max="100"
-                  value={selectionDiscount}
-                  onChange={(e) => setSelectionDiscount(e.target.value)}
-                  className="block w-full rounded-md border-slate-300 py-1.5 px-3 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border transition-all font-mono"
-                  required
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="border border-slate-200 rounded-md p-4 bg-slate-50/50 overflow-x-auto">
-            <div className="flex justify-between items-center mb-3">
-              <h4 className="text-sm font-semibold text-slate-800">Premium Rate Matrix (per 1,000)</h4>
-              <button 
-                type="button" 
-                onClick={() => setPremiumRates([...premiumRates, { id: crypto.randomUUID(), riskCoverage: 'Death Benefit', ageMin: '18', ageMax: '65', gender: 'Any', rate: '1.0' }])}
-                className="text-xs bg-white border border-slate-300 text-slate-700 px-3 py-1.5 rounded-md hover:bg-slate-50 transition-colors shadow-sm font-medium flex items-center gap-1"
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h4 className="text-md font-semibold text-slate-800">Sub-Treaties</h4>
+              <button
+                type="button"
+                onClick={openAddSubTreatyModal}
+                className="flex items-center gap-2 bg-slate-100 text-slate-700 px-3 py-1.5 rounded-md hover:bg-slate-200 transition-colors font-medium text-sm shadow-sm"
               >
-                <Plus className="w-3 h-3" /> Add Row
+                <Plus className="w-4 h-4" /> Add Sub-Treaty
               </button>
             </div>
-            
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-100/50 text-xs text-slate-500">
-                <tr>
-                  <th className="px-2 py-2 text-left font-semibold tracking-wider">Coverage Name</th>
-                  <th className="px-2 py-2 text-left font-semibold tracking-wider">Min Age</th>
-                  <th className="px-2 py-2 text-left font-semibold tracking-wider">Max Age</th>
-                  <th className="px-2 py-2 text-left font-semibold tracking-wider">Gender</th>
-                  <th className="px-2 py-2 text-left font-semibold tracking-wider">Rate (₹)</th>
-                  <th className="px-2 py-2 text-right"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {premiumRates.map((pr) => (
-                  <tr key={pr.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-2 py-1.5">
-                      <input 
-                        type="text" 
-                        value={pr.riskCoverage} 
-                        onChange={e => updatePremiumRate(pr.id, 'riskCoverage', e.target.value)} 
-                        className="w-full rounded border-slate-300 py-1 px-2 text-sm focus:ring-blue-500 focus:border-blue-500 border" 
-                        required 
-                      />
-                    </td>
-                    <td className="px-2 py-1.5">
-                      <input 
-                        type="number" 
-                        min="0" 
-                        value={pr.ageMin} 
-                        onChange={e => updatePremiumRate(pr.id, 'ageMin', e.target.value)} 
-                        className="w-20 rounded border-slate-300 py-1 px-2 text-sm focus:ring-blue-500 focus:border-blue-500 border" 
-                        required 
-                      />
-                    </td>
-                    <td className="px-2 py-1.5">
-                      <input 
-                        type="number" 
-                        min="0" 
-                        value={pr.ageMax} 
-                        onChange={e => updatePremiumRate(pr.id, 'ageMax', e.target.value)} 
-                        className="w-20 rounded border-slate-300 py-1 px-2 text-sm focus:ring-blue-500 focus:border-blue-500 border" 
-                        required 
-                      />
-                    </td>
-                    <td className="px-2 py-1.5">
-                      <select 
-                        value={pr.gender} 
-                        onChange={e => updatePremiumRate(pr.id, 'gender', e.target.value)} 
-                        className="w-24 rounded border-slate-300 py-1 px-2 text-sm focus:ring-blue-500 focus:border-blue-500 border"
-                      >
-                        <option value="Any">Any</option>
-                        <option value="Male">Male</option>
-                        <option value="Female">Female</option>
-                      </select>
-                    </td>
-                    <td className="px-2 py-1.5">
-                      <input 
-                        type="number" 
-                        step="0.01" 
-                        min="0" 
-                        value={pr.rate} 
-                        onChange={e => updatePremiumRate(pr.id, 'rate', e.target.value)} 
-                        className="w-24 rounded border-slate-300 py-1 px-2 text-sm focus:ring-blue-500 focus:border-blue-500 border font-mono" 
-                        required 
-                      />
-                    </td>
-                    <td className="px-2 py-1.5 text-right">
-                      {premiumRates.length > 1 && (
-                        <button 
-                          type="button" 
-                          onClick={() => setPremiumRates(prev => prev.filter(p => p.id !== pr.id))} 
-                          className="text-red-500 hover:bg-red-50 p-1.5 rounded-md transition-colors"
-                          title="Remove row"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
-                    </td>
-                  </tr>
+
+            {subTreaties.length === 0 ? (
+              <div className="text-sm text-slate-500 py-4 px-2 italic">No sub-treaties added yet.</div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {subTreaties.map((st, i) => (
+                  <div key={st.id} className="border border-slate-200 rounded-lg p-4 bg-slate-50 relative group">
+                    <h5 className="font-semibold text-slate-800">{st.name}</h5>
+                    <div className="mt-2 text-xs text-slate-600 space-y-1">
+                      <p><strong>Conditions:</strong> {st.rules?.length || 0} rules</p>
+                      <p><strong>Retention:</strong> {st.retentionType === 'absolute' ? '₹' : ''}{st.retentionValue}{st.retentionType === 'percentage' ? '%' : ''}</p>
+                      <p><strong>Facultative Limit:</strong> ₹{st.facultativeLimit}</p>
+                      <p><strong>Reinsurers:</strong> {st.reinsurers.length}</p>
+                      <p><strong>Premium Table:</strong> {st.premiumRates?.[0]?.premiumTableId || 'N/A'}</p>
+                    </div>
+                    <div className="absolute top-3 right-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button type="button" onClick={() => openEditSubTreatyModal(i)} className="text-blue-600 hover:text-blue-800 p-1">
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button type="button" onClick={() => removeSubTreaty(st.id)} className="text-red-500 hover:text-red-700 p-1">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
                 ))}
-              </tbody>
-            </table>
+              </div>
+            )}
           </div>
 
-          <div className="border border-slate-200 rounded-md p-4 bg-slate-50/50 overflow-x-auto">
-            <div className="flex justify-between items-center mb-3">
-              <h4 className="text-sm font-semibold text-slate-800">Reinsurer Share Allocation</h4>
-              <button 
-                type="button" 
-                onClick={() => setReinsurers([...reinsurers, { id: crypto.randomUUID(), name: '', sharePercentage: '0' }])}
-                className="text-xs bg-white border border-slate-300 text-slate-700 px-3 py-1.5 rounded-md hover:bg-slate-50 transition-colors shadow-sm font-medium flex items-center gap-1"
-              >
-                <Plus className="w-3 h-3" /> Add Reinsurer
-              </button>
-            </div>
-            
-            <table className="min-w-full divide-y divide-slate-200 text-sm mb-2">
-              <thead className="bg-slate-100/50 text-xs text-slate-500">
-                <tr>
-                  <th className="px-2 py-2 text-left font-semibold tracking-wider w-2/3">Reinsurer Name / ID</th>
-                  <th className="px-2 py-2 text-left font-semibold tracking-wider">Share % (Max 100)</th>
-                  <th className="px-2 py-2 text-right"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {reinsurers.map((r) => (
-                  <tr key={r.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-2 py-1.5">
-                      <select 
-                        value={r.name} 
-                        onChange={e => updateReinsurer(r.id, 'name', e.target.value)} 
-                        className="w-full rounded border-slate-300 py-1 px-2 text-sm focus:ring-blue-500 focus:border-blue-500 border bg-white" 
-                        required 
-                      >
-                        <option value="">Select Reinsurer ID...</option>
-                        {companyConfig?.reinsurers?.map(re => (
-                          <option key={re.id} value={`${re.reinsurerId} - ${re.name}`}>
-                            {re.reinsurerId} - {re.name}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="px-2 py-1.5">
-                      <input 
-                        type="number" 
-                        step="0.01" 
-                        min="0" 
-                        max="100"
-                        value={r.sharePercentage} 
-                        onChange={e => updateReinsurer(r.id, 'sharePercentage', e.target.value)} 
-                        className="w-full rounded border-slate-300 py-1 px-2 text-sm focus:ring-blue-500 focus:border-blue-500 border font-mono" 
-                        required 
-                      />
-                    </td>
-                    <td className="px-2 py-1.5 text-right">
-                      {reinsurers.length > 1 && (
-                        <button 
-                          type="button" 
-                          onClick={() => setReinsurers(prev => prev.filter(p => p.id !== r.id))} 
-                          className="text-red-500 hover:bg-red-50 p-1.5 rounded-md transition-colors"
-                          title="Remove row"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="flex items-center justify-between pt-2 border-t border-slate-200">
-            <div className="flex items-center gap-2 text-xs text-slate-500">
-              <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
-              <p>Model factors shouldn't exceed 1.0. You can expand treaties to view their details later.</p>
-            </div>
+          <div className="flex items-center justify-between pt-4 border-t border-slate-200">
+            <div className="flex items-center gap-2 text-xs text-slate-500"></div>
             <div className="flex items-center gap-3">
               {editingId && (
                 <button
@@ -594,23 +305,16 @@ export default function TreatiesView({
                     setName('');
                     setStartDate('');
                     setEndDate('');
-                    setRetentionValue('');
-                    setFacultativeLimit('');
-                    setReinsurerPaymentFrequency(1);
-                    setReinsurerModelFactor('1.0');
-                    setSelectionDiscount('0');
-                    setPremiumRates([{ id: crypto.randomUUID(), riskCoverage: 'Death Benefit', ageMin: '18', ageMax: '65', gender: 'Any', rate: '2.5' }]);
-                    setReinsurers([{ id: crypto.randomUUID(), name: 'Global Re', sharePercentage: '100' }]);
+                    setSubTreaties([]);
                   }}
-                  className="flex items-center justify-center gap-2 bg-white border border-slate-300 text-slate-700 px-6 py-2.5 rounded-md hover:bg-slate-50 transition-colors font-medium text-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-600 shadow-sm"
+                  className="flex items-center justify-center gap-2 bg-white border border-slate-300 text-slate-700 px-6 py-2.5 rounded-md hover:bg-slate-50 transition-colors font-medium text-sm shadow-sm"
                 >
-                  <X className="w-4 h-4" />
-                  Cancel
+                  <X className="w-4 h-4" /> Cancel
                 </button>
               )}
               <button
                 type="submit"
-                className="flex items-center justify-center gap-2 bg-blue-600 text-white px-6 py-2.5 rounded-md hover:bg-blue-700 transition-colors font-medium text-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-600 shadow-sm"
+                className="flex items-center justify-center gap-2 bg-blue-600 text-white px-6 py-2.5 rounded-md hover:bg-blue-700 transition-colors font-medium text-sm shadow-sm"
               >
                 {editingId ? <CheckCircle2 className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
                 {editingId ? 'Update Treaty' : 'Create Treaty'}
@@ -624,7 +328,7 @@ export default function TreatiesView({
         <div className="p-5 border-b border-slate-200 flex justify-between items-center bg-slate-50/50">
           <h3 className="text-base font-medium text-slate-800">Active Treaty Master List</h3>
           <span className="bg-slate-100 text-slate-600 text-xs px-2.5 py-1 rounded-full font-medium border border-slate-200">
-            {treaties.length} Treaties configured
+            {displayedTreaties.length} Treaties
           </span>
         </div>
         
@@ -635,16 +339,15 @@ export default function TreatiesView({
           </div>
         )}
 
-        {treaties.length === 0 ? (
+        {displayedTreaties.length === 0 ? (
           <div className="p-8 flex flex-col items-center justify-center text-slate-400 min-h-[200px]">
             <FileText className="w-12 h-12 mb-3 text-slate-300" />
             <p>No treaties configured yet.</p>
           </div>
         ) : (
           <div className="divide-y divide-slate-200">
-            {treaties.map((treaty) => (
+            {displayedTreaties.map((treaty) => (
               <div key={treaty.id} className="group">
-                {/* Treaty Header Row */}
                 <div 
                   className={`flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors ${expandedId === treaty.id ? 'bg-slate-50' : ''}`}
                   onClick={() => toggleExpand(treaty.id)}
@@ -660,13 +363,7 @@ export default function TreatiesView({
                           Start/End: <span className="font-medium text-slate-700">{treaty.startDate || '-'} to {treaty.endDate || '-'}</span>
                         </span>
                         <span className="text-xs text-slate-500">
-                          Retention: <span className="font-mono font-medium text-slate-700">{treaty.retentionType === 'absolute' ? '₹' : ''}{treaty.retentionValue}{treaty.retentionType === 'percentage' ? '%' : ''}</span>
-                        </span>
-                        <span className="text-xs text-slate-500">
-                          Reinsurers: <span className="font-medium text-slate-700">{treaty.reinsurers?.length || 0}</span>
-                        </span>
-                        <span className="text-xs text-slate-500">
-                          Rates Configured: <span className="font-medium text-slate-700">{treaty.premiumRates.length}</span>
+                          Sub-Treaties: <span className="font-medium text-slate-700">{treaty.subTreaties?.length || 0}</span>
                         </span>
                       </div>
                     </div>
@@ -690,112 +387,28 @@ export default function TreatiesView({
                   </div>
                 </div>
                 
-                {/* Treaty Expanded Details */}
                 {expandedId === treaty.id && (
                   <div className="bg-slate-50/80 p-5 border-t border-slate-200 flex flex-col gap-4 pb-6">
-                    {/* General Settings */}
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 bg-white border border-slate-200 rounded p-4 shadow-sm">
-                      <div>
-                        <div className="text-xs text-slate-500 uppercase font-semibold">Treaty Name</div>
-                        <div className="text-sm font-medium text-slate-800 mt-1">{treaty.name}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-500 uppercase font-semibold">Start &mdash; End Date</div>
-                        <div className="text-sm font-medium mt-1">{treaty.startDate || '-'} to {treaty.endDate || '-'}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-500 uppercase font-semibold">Retention Type</div>
-                        <div className="text-sm font-medium mt-1 capitalize">{treaty.retentionType}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-500 uppercase font-semibold">Retention Value</div>
-                        <div className="text-sm font-medium mt-1">{treaty.retentionType === 'absolute' ? '₹' : ''}{treaty.retentionValue}{treaty.retentionType === 'percentage' ? '%' : ''}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-500 uppercase font-semibold">Facultative Limit</div>
-                        <div className="text-sm font-medium mt-1">₹{treaty.facultativeLimit}</div>
-                      </div>
-                    </div>
-                    {/* Reinsurers */}
-                    <details className="group/reinsurers bg-white border border-slate-200 rounded overflow-hidden shadow-sm">
-                      <summary className="px-4 py-3 bg-slate-50 cursor-pointer font-semibold text-sm text-slate-700 flex justify-between items-center select-none hover:bg-slate-100 transition-colors">
-                        <span>Reinsurer Share Allocation <span className="ml-2 text-xs font-normal text-slate-500 bg-white px-2 py-0.5 rounded-full border border-slate-200">{treaty.reinsurers?.length || 0} Reinsurers</span></span>
-                        <ChevronDown className="w-4 h-4 text-slate-400 group-open/reinsurers:rotate-180 transition-transform" />
-                      </summary>
-                      <div className="border-t border-slate-200">
-                        <table className="min-w-full divide-y divide-slate-200 text-sm">
-                          <thead className="bg-slate-50 text-xs">
-                            <tr>
-                              <th className="px-4 py-3 text-left font-medium text-slate-500 uppercase tracking-wider w-2/3">Reinsurer</th>
-                              <th className="px-4 py-3 text-right font-medium text-slate-500 uppercase tracking-wider">Share %</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100 font-mono">
-                            {treaty.reinsurers?.map(r => (
-                              <tr key={r.id} className="hover:bg-slate-50">
-                                <td className="px-4 py-3 text-slate-700 font-sans">{r.name}</td>
-                                <td className="px-4 py-3 text-right text-slate-700">{r.sharePercentage.toFixed(2)}%</td>
-                              </tr>
-                            ))}
-                            {(!treaty.reinsurers || treaty.reinsurers.length === 0) && (
-                              <tr>
-                                <td colSpan={2} className="px-4 py-6 text-center text-slate-400 font-sans italic bg-white">No reinsurers assigned</td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </details>
-
-                    {/* Premium & Discount Rules */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-white border border-slate-200 rounded p-4 shadow-sm">
-                      <div>
-                        <div className="text-xs text-slate-500 uppercase font-semibold">Payment Mode</div>
-                        <div className="text-sm font-medium mt-1">
-                          {treaty.reinsurerPaymentFrequency === 1 ? 'Annually' : treaty.reinsurerPaymentFrequency === 2 ? 'Semi-Annually' : treaty.reinsurerPaymentFrequency === 4 ? 'Quarterly' : 'Monthly'}
+                    {treaty.subTreaties?.map((st, i) => (
+                      <div key={st.id} className="bg-white border border-slate-200 rounded p-4 shadow-sm mb-4">
+                        <div className="flex justify-between items-start mb-2">
+                          <h4 className="font-bold text-slate-700">{st.name}</h4>
+                          <span className="text-xs text-slate-500">
+                            {st.startDate || '-'} to {st.endDate || '-'}
+                          </span>
                         </div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-500 uppercase font-semibold">Model Factor</div>
-                        <div className="text-sm font-medium text-slate-800 mt-1">{treaty.reinsurerModelFactor?.toFixed(4)}x</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-500 uppercase font-semibold">Selection Discount</div>
-                        <div className="text-sm font-medium mt-1">{treaty.selectionDiscount?.toFixed(2)}%</div>
-                      </div>
-                    </div>
-
-                    {/* Premium Rates */}
-                    <details className="group/rates bg-white border border-slate-200 rounded overflow-hidden shadow-sm">
-                      <summary className="px-4 py-3 bg-slate-50 cursor-pointer font-semibold text-sm text-slate-700 flex justify-between items-center select-none hover:bg-slate-100 transition-colors">
-                        <span>Premium Rate Matrix <span className="ml-2 text-xs font-normal text-slate-500 bg-white px-2 py-0.5 rounded-full border border-slate-200">{new Set(treaty.premiumRates.map(pr => pr.riskCoverage)).size} unique coverages</span></span>
-                        <ChevronDown className="w-4 h-4 text-slate-400 group-open/rates:rotate-180 transition-transform" />
-                      </summary>
-                      <div className="border-t border-slate-200">
-                        <div className="max-h-[300px] overflow-y-auto">
-                          <table className="min-w-full divide-y divide-slate-200 text-sm">
-                            <thead className="bg-slate-50 text-xs sticky top-0 z-10 shadow-sm">
-                              <tr>
-                                <th className="px-4 py-3 text-left font-medium text-slate-500 uppercase tracking-wider">Coverage</th>
-                                <th className="px-4 py-3 text-left font-medium text-slate-500 uppercase tracking-wider">Age Band</th>
-                                <th className="px-4 py-3 text-left font-medium text-slate-500 uppercase tracking-wider">Gender</th>
-                                <th className="px-4 py-3 text-right font-medium text-slate-500 uppercase tracking-wider">Rate/1000</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100 font-mono text-xs">
-                              {treaty.premiumRates.map(pr => (
-                                <tr key={pr.id} className="hover:bg-slate-50">
-                                  <td className="px-4 py-2.5 text-slate-700 whitespace-nowrap font-sans">{pr.riskCoverage}</td>
-                                  <td className="px-4 py-2.5 text-slate-600">{pr.ageMin} - {pr.ageMax}</td>
-                                  <td className="px-4 py-2.5 text-slate-600">{pr.gender}</td>
-                                  <td className="px-4 py-2.5 text-right font-semibold text-slate-800">{pr.rate.toFixed(3)}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4">
+                           <div><span className="text-slate-500">Retention:</span> <span className="font-semibold">{st.retentionType === 'absolute' ? '₹':''}{st.retentionValue}{st.retentionType === 'percentage' ? '%':''}</span></div>
+                           <div><span className="text-slate-500">Facultative Limit:</span> <span className="font-semibold">₹{st.facultativeLimit}</span></div>
+                           <div><span className="text-slate-500">Model Factor:</span> <span className="font-semibold">{st.reinsurerModelFactor}x</span></div>
+                           <div><span className="text-slate-500">Sel. Discount:</span> <span className="font-semibold">{st.selectionDiscount}%</span></div>
                         </div>
+                        <div className="text-xs font-semibold text-slate-500 uppercase">Reinsurers</div>
+                        <ul className="text-sm list-disc list-inside mb-4 text-slate-700">
+                           {st.reinsurers?.map(r => <li key={r.id}>{r.name} - {r.sharePercentage}%</li>)}
+                        </ul>
                       </div>
-                    </details>
+                    ))}
                   </div>
                 )}
               </div>
@@ -803,6 +416,280 @@ export default function TreatiesView({
           </div>
         )}
       </div>
+
+      {isSubTreatyModalOpen && currentSubTreaty && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-6xl max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+              <h3 className="text-lg font-bold text-slate-800">
+                {currentSubTreatyIndex !== null ? 'Edit Sub-Treaty' : 'Create Sub-Treaty'} - {currentSubTreaty.name}
+              </h3>
+              <button type="button" onClick={closeSubTreatyModal} className="text-slate-500 hover:text-slate-700">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
+              {/* Left Panel: Sub-Treaty Rules */}
+              <div className="w-full md:w-1/2 p-6 border-b md:border-b-0 md:border-r border-slate-200 overflow-y-auto">
+                <h4 className="text-md font-semibold text-slate-700 mb-4 flex items-center gap-2">
+                  <Calculator className="w-5 h-5 text-blue-500" /> Sub-Treaty Basic Info
+                </h4>
+
+                <div className="mb-6 text-sm">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                    <div>
+                      <label className="block text-slate-700 font-medium mb-1">Start Date</label>
+                      <input type="date" value={currentSubTreaty.startDate || ''} onChange={e => updateCurrentSubTreaty('startDate', e.target.value)} className="w-full border-slate-300 rounded px-2 py-1.5 border focus:ring-blue-500 focus:border-blue-500 bg-white" />
+                    </div>
+                    <div>
+                      <label className="block text-slate-700 font-medium mb-1">End Date</label>
+                      <input type="date" value={currentSubTreaty.endDate || ''} onChange={e => updateCurrentSubTreaty('endDate', e.target.value)} className="w-full border-slate-300 rounded px-2 py-1.5 border focus:ring-blue-500 focus:border-blue-500 bg-white" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-200 my-6"></div>
+
+                <div className="mb-6">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm font-semibold text-slate-700">Conditions</span>
+                    <button type="button" onClick={() => updateCurrentSubTreaty('rules', [...(currentSubTreaty.rules || []), {id: crypto.randomUUID(), ruleItem: 'SA', ruleValue: ''}])} className="text-xs bg-white border border-slate-300 shadow-sm px-2 py-1 rounded hover:bg-slate-50 transition-colors">Add Rule</button>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-xs">
+                      <thead className="bg-slate-50">
+                        <tr>
+                          <th className="text-left font-medium text-slate-500 px-2 py-1.5 border-b">Rule Item</th>
+                          <th className="text-left font-medium text-slate-500 px-2 py-1.5 border-b">Rule Value</th>
+                          <th className="border-b w-10"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(currentSubTreaty.rules || []).map(rule => (
+                          <tr key={rule.id}>
+                            <td className="py-1 px-1">
+                              <select 
+                                value={rule.ruleItem} 
+                                onChange={e => {
+                                  updateCurrentSubTreaty('rules', (currentSubTreaty.rules || []).map(r => r.id === rule.id ? { ...r, ruleItem: e.target.value, ruleValue: '' } : r));
+                                }}
+                                className="w-full border-slate-300 rounded px-1.5 py-1.5 border bg-white"
+                              >
+                                {['SA', 'EMR', 'Medical', 'Smoker', 'Coverage', 'Gender', 'Imparement', 'Occupation'].map(opt => (
+                                  <option key={opt} value={opt}>{opt}</option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="py-1 px-1">
+                              {rule.ruleItem.toLowerCase() === 'gender' ? (
+                                <select 
+                                  value={rule.ruleValue}
+                                  onChange={e => updateCurrentSubTreaty('rules', (currentSubTreaty.rules || []).map(r => r.id === rule.id ? { ...r, ruleValue: e.target.value } : r))}
+                                  className="w-full border-slate-300 rounded px-1.5 py-1.5 border bg-white"
+                                >
+                                  <option value="">Select...</option>
+                                  <option value="Male">Male</option>
+                                  <option value="Female">Female</option>
+                                  <option value="Any">Any</option>
+                                </select>
+                              ) : rule.ruleItem.toLowerCase() === 'medical' ? (
+                                <select 
+                                  value={rule.ruleValue}
+                                  onChange={e => updateCurrentSubTreaty('rules', (currentSubTreaty.rules || []).map(r => r.id === rule.id ? { ...r, ruleValue: e.target.value } : r))}
+                                  className="w-full border-slate-300 rounded px-1.5 py-1.5 border bg-white"
+                                >
+                                  <option value="">Select...</option>
+                                  <option value="Medical">Medical</option>
+                                  <option value="Non-Medical">Non-Medical</option>
+                                </select>
+                              ) : rule.ruleItem.toLowerCase() === 'smoker' ? (
+                                <select 
+                                  value={rule.ruleValue}
+                                  onChange={e => updateCurrentSubTreaty('rules', (currentSubTreaty.rules || []).map(r => r.id === rule.id ? { ...r, ruleValue: e.target.value } : r))}
+                                  className="w-full border-slate-300 rounded px-1.5 py-1.5 border bg-white"
+                                >
+                                  <option value="">Select...</option>
+                                  <option value="Smoker">Smoker</option>
+                                  <option value="Non-Smoker">Non-Smoker</option>
+                                </select>
+                              ) : rule.ruleItem.toLowerCase() === 'imparement' ? (
+                                <select 
+                                  value={rule.ruleValue}
+                                  onChange={e => updateCurrentSubTreaty('rules', (currentSubTreaty.rules || []).map(r => r.id === rule.id ? { ...r, ruleValue: e.target.value } : r))}
+                                  className="w-full border-slate-300 rounded px-1.5 py-1.5 border bg-white"
+                                >
+                                  <option value="">Select...</option>
+                                  <option value="Single">Single</option>
+                                  <option value="Joint">Joint</option>
+                                </select>
+                              ) : rule.ruleItem.toLowerCase() === 'coverage' ? (
+                                <select 
+                                  value={rule.ruleValue}
+                                  onChange={e => updateCurrentSubTreaty('rules', (currentSubTreaty.rules || []).map(r => r.id === rule.id ? { ...r, ruleValue: e.target.value } : r))}
+                                  className="w-full border-slate-300 rounded px-1.5 py-1.5 border bg-white"
+                                >
+                                  <option value="">Select Coverage...</option>
+                                  {uniqueCoverages.map(cov => (
+                                    <option key={cov} value={cov}>{cov}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <input 
+                                  type="text" 
+                                  value={rule.ruleValue} 
+                                  onChange={e => updateCurrentSubTreaty('rules', (currentSubTreaty.rules || []).map(r => r.id === rule.id ? { ...r, ruleValue: e.target.value } : r))}
+                                  className="w-full border-slate-300 rounded px-1.5 py-1.5 border" 
+                                  placeholder="Value..."
+                                  required 
+                                />
+                              )}
+                            </td>
+                            <td className="py-1 px-1 text-center">
+                              <button type="button" onClick={() => updateCurrentSubTreaty('rules', (currentSubTreaty.rules || []).filter(xr => xr.id !== rule.id))} className="text-red-500 hover:bg-red-50 p-1 rounded"><Trash2 className="w-3.5 h-3.5"/></button>
+                            </td>
+                          </tr>
+                        ))}
+                        {(!currentSubTreaty.rules || currentSubTreaty.rules.length === 0) && (
+                          <tr>
+                            <td colSpan={3} className="py-3 px-2 text-center text-slate-500 italic">No rules defined.</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* SubTreaty Premium Rates */}
+                <div className="mt-6">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm font-semibold text-slate-700">Premium Table</span>
+                  </div>
+                  <div className="mb-4">
+                    <select
+                      value={currentSubTreaty.premiumRates[0]?.premiumTableId || ''}
+                      onChange={e => {
+                        updateCurrentSubTreaty('premiumRates', [
+                          {
+                            id: crypto.randomUUID(),
+                            premiumTableId: e.target.value,
+                            ageMin: 0,
+                            ageMax: 999,
+                            gender: 'Any',
+                            rate: 0
+                          }
+                        ]);
+                      }}
+                      className="w-full text-sm border-slate-300 rounded px-2 py-2 border bg-white focus:ring-blue-500"
+                    >
+                      <option value="">Select a Premium Table...</option>
+                      {uniquePremiumTableIds.map(id => (
+                        <option key={id} value={id}>{id}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Right Panel: Reinsurers & Retention */}
+              <div className="w-full md:w-1/2 p-6 overflow-y-auto bg-slate-50/50">
+                <h4 className="text-md font-semibold text-slate-700 mb-4 flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-indigo-500" /> Retention, Pricing & Reinsurers
+                </h4>
+
+                <div className="grid grid-cols-2 gap-4 mb-6">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Retention Type</label>
+                    <select value={currentSubTreaty.retentionType} onChange={e => updateCurrentSubTreaty('retentionType', e.target.value)} className="w-full text-sm border-slate-300 rounded px-2 py-2 border bg-white focus:ring-blue-500">
+                      <option value="absolute">Absolute (₹)</option>
+                      <option value="percentage">Quota (%)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Retention Value</label>
+                    <input type="number" step="0.01" value={currentSubTreaty.retentionValue} onChange={e => updateCurrentSubTreaty('retentionValue', parseFloat(e.target.value))} className="w-full text-sm border-slate-300 rounded px-2 py-2 border focus:ring-blue-500" required />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Facultative Limit</label>
+                    <input type="number" step="0.01" value={currentSubTreaty.facultativeLimit} onChange={e => updateCurrentSubTreaty('facultativeLimit', parseFloat(e.target.value))} className="w-full text-sm border-slate-300 rounded px-2 py-2 border focus:ring-blue-500" required />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Payment Frequency</label>
+                    <select value={currentSubTreaty.reinsurerPaymentFrequency} onChange={e => updateCurrentSubTreaty('reinsurerPaymentFrequency', parseInt(e.target.value))} className="w-full text-sm border-slate-300 rounded px-2 py-2 border bg-white focus:ring-blue-500">
+                      <option value={1}>Annually (1)</option>
+                      <option value={2}>Semi-Annually (2)</option>
+                      <option value={4}>Quarterly (4)</option>
+                      <option value={12}>Monthly (12)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Model Factor</label>
+                    <input type="number" step="0.0001" value={currentSubTreaty.reinsurerModelFactor} onChange={e => updateCurrentSubTreaty('reinsurerModelFactor', parseFloat(e.target.value))} className="w-full text-sm font-mono border-slate-300 rounded px-2 py-2 border focus:ring-blue-500" required />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Selection Discount (%)</label>
+                    <input type="number" step="0.01" value={currentSubTreaty.selectionDiscount} onChange={e => updateCurrentSubTreaty('selectionDiscount', parseFloat(e.target.value))} className="w-full text-sm font-mono border-slate-300 rounded px-2 py-2 border focus:ring-blue-500" required />
+                  </div>
+                </div>
+
+                {/* SubTreaty Reinsurers */}
+                <div className="mt-6">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm font-semibold text-slate-700">Reinsurers Pool</span>
+                    <button type="button" onClick={() => updateCurrentSubTreaty('reinsurers', [...currentSubTreaty.reinsurers, {id: crypto.randomUUID(), name:'', sharePercentage: 0}])} className="text-xs bg-white border border-slate-300 shadow-sm px-2 py-1 rounded hover:bg-slate-50 transition-colors">Add Reinsurer</button>
+                  </div>
+                  <div className="bg-white border text-sm border-slate-200 rounded-lg overflow-hidden">
+                    <table className="min-w-full">
+                      <thead className="bg-slate-50">
+                        <tr>
+                          <th className="text-left font-medium text-slate-500 px-3 py-2 border-b">Reinsurer ID</th>
+                          <th className="text-right font-medium text-slate-500 px-3 py-2 border-b w-24">Share %</th>
+                          <th className="border-b w-10"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {currentSubTreaty.reinsurers.map(r => (
+                          <tr key={r.id} className="border-b border-slate-100 last:border-0">
+                            <td className="py-2 px-3">
+                              <select value={r.name} onChange={e => updateCurrentSTReinsurer(r.id, 'name', e.target.value)} className="w-full border-slate-300 rounded px-2 py-1.5 bg-white border" required>
+                                <option value="">Select Reinsurer...</option>
+                                {companyConfig?.reinsurers?.map(re => (
+                                  <option key={re.id} value={`${re.reinsurerId} - ${re.name}`}>{re.reinsurerId} - {re.name}</option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="py-2 px-3">
+                              <input type="number" step="0.01" value={r.sharePercentage} onChange={e => updateCurrentSTReinsurer(r.id, 'sharePercentage', parseFloat(e.target.value))} className="w-full border-slate-300 rounded px-2 py-1.5 font-mono border text-right" required />
+                            </td>
+                            <td className="py-2 px-3 text-center">
+                              <button type="button" onClick={() => updateCurrentSubTreaty('reinsurers', currentSubTreaty.reinsurers.filter(xr => xr.id !== r.id))} className="text-red-500 p-1 hover:bg-red-50 rounded"><Trash2 className="w-4 h-4"/></button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {/* Share % validation warning */}
+                  {currentSubTreaty.reinsurers.reduce((sum, r) => sum + (parseFloat(r.sharePercentage as any) || 0), 0) !== 100 && (
+                     <div className="mt-2 text-xs text-amber-600 flex items-center gap-1.5">
+                       <AlertCircle className="w-3.5 h-3.5" />
+                       Total share percentage must equal 100%. Currently: {currentSubTreaty.reinsurers.reduce((sum, r) => sum + (parseFloat(r.sharePercentage as any) || 0), 0)}%
+                     </div>
+                  )}
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-4 border-t border-slate-200 flex justify-end gap-3 bg-slate-50">
+              <button type="button" onClick={closeSubTreatyModal} className="px-4 py-2 border border-slate-300 rounded-lg text-slate-700 bg-white hover:bg-slate-50 transition-colors font-medium text-sm">Cancel</button>
+              <button type="button" onClick={saveSubTreaty} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm shadow-sm flex items-center gap-2">
+                <Save className="w-4 h-4" /> Save Sub-Treaty
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

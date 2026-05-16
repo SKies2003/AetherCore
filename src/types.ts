@@ -1,5 +1,13 @@
 export type PaymentFrequency = 1 | 2 | 4 | 12;
 export type Gender = 'Male' | 'Female' | 'Any';
+export interface ReserveTableEntry {
+  id: string;
+  premiumTableId: string;
+  age: number;
+  gender: string; // 'M', 'F', 'MF'
+  premiumRate: number;
+}
+
 export type RetentionType = 'absolute' | 'percentage';
 
 export type GenderTarget = 'Male' | 'Female';
@@ -33,7 +41,7 @@ export interface ModelFactorEntry {
 
 export interface PremiumRateEntry {
   id: string;
-  riskCoverage: string;
+  premiumTableId: string;
   ageMin: number;
   ageMax: number;
   gender: Gender;
@@ -46,11 +54,17 @@ export interface ReinsurerShare {
   sharePercentage: number;
 }
 
-export interface Treaty {
+export interface SubTreatyRule {
+  id: string;
+  ruleItem: string;
+  ruleValue: string;
+}
+
+export interface SubTreaty {
   id: string;
   name: string;
-  startDate: string;
-  endDate: string;
+  startDate?: string;
+  endDate?: string;
   retentionType: RetentionType;
   retentionValue: number;
   facultativeLimit: number;
@@ -59,6 +73,16 @@ export interface Treaty {
   selectionDiscount: number;
   premiumRates: PremiumRateEntry[];
   reinsurers: ReinsurerShare[];
+  rules?: SubTreatyRule[];
+}
+
+export interface Treaty {
+  id: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  lineOfBusiness: string;
+  subTreaties: SubTreaty[];
 }
 
 export interface PolicyInput {

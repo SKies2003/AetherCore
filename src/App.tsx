@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Activity, ShieldCheck, FileText, Calculator, Settings, AlertCircle, Building2 } from 'lucide-react';
-import { Treaty, MasterConfig, SavedPolicy } from './types';
+import { Activity, ShieldCheck, FileText, Calculator, Settings, AlertCircle, Building2, FileSpreadsheet } from 'lucide-react';
+import { Treaty, MasterConfig, SavedPolicy, ReserveTableEntry } from './types';
 import TreatiesView from './components/TreatiesView';
 import CalculatorView from './components/CalculatorView';
 import MasterView from './components/MasterView';
@@ -9,10 +9,11 @@ import AccountsView from './components/AccountsView';
 import PlansView from './components/PlansView';
 import FacultativeView from './components/FacultativeView';
 import CompanyView from './components/CompanyView';
+import ReserveTablesView from './components/ReserveTablesView';
 import { Plan, CedingCompanyConfig } from './types';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'company' | 'treaties' | 'plans' | 'calculator' | 'master' | 'cessions' | 'accounts' | 'facultative'>('company');
+  const [activeTab, setActiveTab] = useState<'company' | 'treaties' | 'plans' | 'calculator' | 'master' | 'cessions' | 'accounts' | 'facultative' | 'reserve-tables'>('company');
   
   const [companyConfig, setCompanyConfig] = useState<CedingCompanyConfig>({
     name: '',
@@ -38,6 +39,7 @@ export default function App() {
   });
 
   const [savedPolicies, setSavedPolicies] = useState<SavedPolicy[]>([]);
+  const [reserveTables, setReserveTables] = useState<ReserveTableEntry[]>([]);
 
   const handleAddTreaty = (treaty: Treaty | Treaty[]) => {
     setTreaties(prev => Array.isArray(treaty) ? [...prev, ...treaty] : [...prev, treaty]);
@@ -52,11 +54,11 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen flex w-full bg-slate-50 font-sans text-slate-900">
+    <div className="min-h-screen min-w-[1024px] flex w-full bg-slate-50 font-sans text-slate-900 overflow-x-auto">
       {/* Sidebar Shell */}
       <div className="w-64 bg-slate-900 text-white flex flex-col fixed inset-y-0 left-0 z-10 border-r border-slate-800">
         <div className="p-6 flex items-center gap-3 border-b border-slate-800">
-          <div className="bg-blue-600 p-1.5 rounded-lg text-white">
+          <div className="bg-blue-500 p-1.5 rounded-lg text-white">
             <ShieldCheck className="w-6 h-6" />
           </div>
           <span className="font-bold text-lg tracking-tight">AetherCore</span>
@@ -71,8 +73,8 @@ export default function App() {
             onClick={() => setActiveTab('company')}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
               activeTab === 'company' 
-                ? 'bg-blue-600/10 text-blue-400' 
-                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                ? 'bg-slate-800 text-white shadow-sm' 
+                : 'text-slate-300 hover:bg-slate-800/50 hover:text-white'
             }`}
           >
             <Building2 className="w-5 h-5" />
@@ -83,8 +85,8 @@ export default function App() {
             onClick={() => setActiveTab('calculator')}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
               activeTab === 'calculator' 
-                ? 'bg-blue-600/10 text-blue-400' 
-                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                ? 'bg-slate-800 text-white shadow-sm' 
+                : 'text-slate-300 hover:bg-slate-800/50 hover:text-white'
             }`}
           >
             <Calculator className="w-5 h-5" />
@@ -95,8 +97,8 @@ export default function App() {
             onClick={() => setActiveTab('plans')}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
               activeTab === 'plans' 
-                ? 'bg-blue-600/10 text-blue-400' 
-                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                ? 'bg-slate-800 text-white shadow-sm' 
+                : 'text-slate-300 hover:bg-slate-800/50 hover:text-white'
             }`}
           >
             <FileText className="w-5 h-5" />
@@ -104,11 +106,23 @@ export default function App() {
           </button>
 
           <button
+            onClick={() => setActiveTab('reserve-tables')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              activeTab === 'reserve-tables' 
+                ? 'bg-slate-800 text-white shadow-sm' 
+                : 'text-slate-300 hover:bg-slate-800/50 hover:text-white'
+            }`}
+          >
+            <FileSpreadsheet className="w-5 h-5" />
+            Reserve Tables
+          </button>
+
+          <button
             onClick={() => setActiveTab('treaties')}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
               activeTab === 'treaties' 
-                ? 'bg-blue-600/10 text-blue-400' 
-                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                ? 'bg-slate-800 text-white shadow-sm' 
+                : 'text-slate-300 hover:bg-slate-800/50 hover:text-white'
             }`}
           >
             <FileText className="w-5 h-5" />
@@ -119,8 +133,8 @@ export default function App() {
             onClick={() => setActiveTab('master')}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
               activeTab === 'master' 
-                ? 'bg-blue-600/10 text-blue-400' 
-                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                ? 'bg-slate-800 text-white shadow-sm' 
+                : 'text-slate-300 hover:bg-slate-800/50 hover:text-white'
             }`}
           >
             <Settings className="w-5 h-5" />
@@ -131,8 +145,8 @@ export default function App() {
             onClick={() => setActiveTab('cessions')}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
               activeTab === 'cessions' 
-                ? 'bg-blue-600/10 text-blue-400' 
-                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                ? 'bg-slate-800 text-white shadow-sm' 
+                : 'text-slate-300 hover:bg-slate-800/50 hover:text-white'
             }`}
           >
             <Activity className="w-5 h-5" />
@@ -143,8 +157,8 @@ export default function App() {
             onClick={() => setActiveTab('facultative')}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
               activeTab === 'facultative' 
-                ? 'bg-blue-600/10 text-blue-400' 
-                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                ? 'bg-slate-800 text-white shadow-sm' 
+                : 'text-slate-300 hover:bg-slate-800/50 hover:text-white'
             }`}
           >
             <AlertCircle className="w-5 h-5" />
@@ -155,8 +169,8 @@ export default function App() {
             onClick={() => setActiveTab('accounts')}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
               activeTab === 'accounts' 
-                ? 'bg-blue-600/10 text-blue-400' 
-                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                ? 'bg-slate-800 text-white shadow-sm' 
+                : 'text-slate-300 hover:bg-slate-800/50 hover:text-white'
             }`}
           >
             <FileText className="w-5 h-5" />
@@ -188,11 +202,13 @@ export default function App() {
               onDeleteTreaty={handleDeleteTreaty}
               companyConfig={companyConfig}
               savedPolicies={savedPolicies}
+              reserveTables={reserveTables}
+              plans={plans}
             />
           </div>
 
           <div className={activeTab === 'calculator' ? 'block' : 'hidden'}>
-            <CalculatorView treaties={treaties} masterConfig={masterConfig} plans={plans} savedPolicies={savedPolicies} setSavedPolicies={setSavedPolicies} />
+            <CalculatorView treaties={treaties.filter(t => !t.lineOfBusiness || t.lineOfBusiness === companyConfig.lineOfBusiness)} masterConfig={masterConfig} plans={plans} savedPolicies={savedPolicies} setSavedPolicies={setSavedPolicies} reserveTables={reserveTables} />
           </div>
 
           <div className={activeTab === 'master' ? 'block' : 'hidden'}>
@@ -209,6 +225,10 @@ export default function App() {
 
           <div className={activeTab === 'accounts' ? 'block' : 'hidden'}>
             <AccountsView />
+          </div>
+
+          <div className={activeTab === 'reserve-tables' ? 'block' : 'hidden'}>
+            <ReserveTablesView reserveTables={reserveTables} setReserveTables={setReserveTables} />
           </div>
         </div>
       </main>

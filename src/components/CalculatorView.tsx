@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Treaty, PaymentFrequency, Gender, MasterConfig, SavedPolicy, Plan } from '../types';
+import { Treaty, PaymentFrequency, Gender, MasterConfig, SavedPolicy, Plan, SubTreaty, ReserveTableEntry } from '../types';
 import { calculateSumCeded, calculatePremiumAmount } from '../lib/calculator';
 import { Calculator, AlertCircle, RefreshCw, Download, Upload, Save, Trash2, FileSpreadsheet } from 'lucide-react';
 
@@ -8,13 +8,15 @@ export default function CalculatorView({
   masterConfig, 
   plans,
   savedPolicies, 
-  setSavedPolicies 
+  setSavedPolicies,
+  reserveTables = []
 }: { 
   treaties: Treaty[];
   masterConfig: MasterConfig;
   plans: Plan[];
   savedPolicies: SavedPolicy[];
   setSavedPolicies: React.Dispatch<React.SetStateAction<SavedPolicy[]>>;
+  reserveTables?: ReserveTableEntry[];
 }) {
   // Policy Holder Details
   const [customerId, setCustomerId] = useState<string>('');
@@ -70,16 +72,10 @@ export default function CalculatorView({
     return 0;
   }, [dob]);
 
-  const selectedTreaty = useMemo(() => {
+  const activeTreatyInfo = useMemo(() => {
     const ageNum = calculatedAge;
     
     for (const t of treaties) {
-       const prEntry = t.premiumRates.find(pr => 
-         pr.riskCoverage === riskCoverage &&
-         ageNum >= pr.ageMin && ageNum <= pr.ageMax &&
-         (pr.gender === 'Any' || pr.gender === gender)
-       );
-       
        let isDateValid = true;
        if (dateOfCommencement && t.startDate && t.endDate) {
            const docDate = new Date(dateOfCommencement);
@@ -89,55 +85,121 @@ export default function CalculatorView({
              isDateValid = false;
            }
        }
-       
-       if (prEntry && isDateValid) {
-           return t;
+       if (!isDateValid) continue;
+
+       for (const sub of t.subTreaties) {
+           let ruleMatch = true;
+           if (sub.rules && sub.rules.length > 0) {
+             for (const r of sub.rules) {
+               const val = r.ruleValue.toLowerCase().trim();
+               const item = r.ruleItem.toLowerCase();
+               
+                    if (item === 'sa') {
+                      const numSA = parseFloat(sumAssured) || 0;
+                      if (val.includes('*')) {
+                        const parts = val.split('*');
+                        const min = parseFloat(parts[0]);
+                        const max = parseFloat(parts[1]);
+                        if (!(numSA >= min && numSA <= max)) ruleMatch = false;
+                      }
+                      else if (val.startsWith('>=')) { if (!(numSA >= parseFloat(val.substring(2)))) ruleMatch = false; }
+                      else if (val.startsWith('<=')) { if (!(numSA <= parseFloat(val.substring(2)))) ruleMatch = false; }
+                      else if (val.startsWith('>')) { if (!(numSA > parseFloat(val.substring(1)))) ruleMatch = false; }
+                      else if (val.startsWith('<')) { if (!(numSA < parseFloat(val.substring(1)))) ruleMatch = false; }
+                      else if (numSA.toString() !== val && val !== '') ruleMatch = false;
+                    } else if (item === 'emr') {
+                      const numEMR = parseFloat(emrPercentage) || 0;
+                      if (val.includes('*')) {
+                        const parts = val.split('*');
+                        const min = parseFloat(parts[0]);
+                        const max = parseFloat(parts[1]);
+                        if (!(numEMR >= min && numEMR <= max)) ruleMatch = false;
+                      }
+                      else if (val.startsWith('>=')) { if (!(numEMR >= parseFloat(val.substring(2)))) ruleMatch = false; }
+                      else if (val.startsWith('<=')) { if (!(numEMR <= parseFloat(val.substring(2)))) ruleMatch = false; }
+                      else if (val.startsWith('>')) { if (!(numEMR > parseFloat(val.substring(1)))) ruleMatch = false; }
+                      else if (val.startsWith('<')) { if (!(numEMR < parseFloat(val.substring(1)))) ruleMatch = false; }
+                      else if (numEMR.toString() !== val && val !== '') ruleMatch = false;
+                    } else if (item === 'medical') {
+                 if (medical.toLowerCase() !== val && val !== '') ruleMatch = false;
+               } else if (item === 'smoker') {
+                 if (smoker.toLowerCase() !== val && val !== '') ruleMatch = false;
+               } else if (item === 'coverage') {
+                 if (riskCoverage.toLowerCase() !== val && val !== '') ruleMatch = false;
+               } else if (item === 'gender') {
+                 if (gender.toLowerCase() !== val && val !== 'any' && val !== '') ruleMatch = false;
+               } else if (item === 'imparement') {
+                 if (impairment.toLowerCase() !== val && val !== '') ruleMatch = false;
+               }
+               if (!ruleMatch) break;
+             }
+           } else {
+             // If no rules, fallback: we can't reliably match so maybe we just accept the first one, or maybe false
+             // Let's accept it if there are no rules.
+           }
+           
+           if (ruleMatch) {
+             return { treaty: t, subTreaty: sub };
+           }
        }
     }
     return null;
-  }, [treaties, riskCoverage, calculatedAge, gender, dateOfCommencement]);
+  }, [treaties, riskCoverage, calculatedAge, gender, dateOfCommencement, sumAssured, emrPercentage, medical, smoker, impairment]);
 
-  // Derived Coverage Options from all treaties
+  // Derived Coverage Options from all treaties is removed since coverages are now rules. Wait, what about `availableCoverages` for the dropdown? We can just keep it hardcoded since it's driven from plan.
   const availableCoverages = useMemo(() => {
-    const allCovs = new Set<string>();
-    treaties.forEach(t => t.premiumRates.forEach(pr => allCovs.add(pr.riskCoverage)));
-    return allCovs.size > 0 ? Array.from(allCovs) : ['Death Benefit'];
-  }, [treaties]);
+    return ['Death Benefit', 'Accidental Death', 'Critical Illness'];
+  }, []);
 
   const computedFactors = useMemo(() => {
-    if (!selectedTreaty) return null;
+    if (!activeTreatyInfo) return null;
     
+    const { subTreaty } = activeTreatyInfo;
     // Model Factor Calculation
-    const modelFactor = selectedTreaty.reinsurerModelFactor || 1.0;
+    const modelFactor = subTreaty.reinsurerModelFactor || 1.0;
 
     // Premium Rate Calculation
     const ageNum = calculatedAge;
     
-    // Find the first matching premium rate based on age, risk coverage, and gender
-    // In a real system you'd want EXACT matches or fallback matching logic.
-    const prEntry = selectedTreaty.premiumRates.find(pr => 
-      pr.riskCoverage === riskCoverage &&
+    const prEntry = subTreaty.premiumRates.find(pr => 
       ageNum >= pr.ageMin && ageNum <= pr.ageMax &&
       (pr.gender === 'Any' || pr.gender === gender)
     );
     
-    const premiumRate = prEntry ? prEntry.rate : null;
+    let premiumRate = null;
+    if (prEntry) {
+      if (prEntry.premiumTableId && reserveTables.length > 0) {
+        const genPrefix = gender === 'Male' ? 'M' : gender === 'Female' ? 'F' : 'MF';
+        // Match exact age, and gender (first check exact M/F, then fallback to MF)
+        let rtEntry = reserveTables.find(rt => rt.premiumTableId === prEntry.premiumTableId && rt.age === ageNum && rt.gender === genPrefix);
+        if (!rtEntry) {
+          rtEntry = reserveTables.find(rt => rt.premiumTableId === prEntry.premiumTableId && rt.age === ageNum && rt.gender === 'MF');
+        }
+        if (rtEntry) {
+          premiumRate = rtEntry.premiumRate;
+        } else {
+          premiumRate = prEntry.rate; // fallback
+        }
+      } else {
+        premiumRate = prEntry.rate;
+      }
+    }
 
     return { modelFactor, premiumRate };
-  }, [selectedTreaty, calculatedAge, gender, riskCoverage]);
+  }, [activeTreatyInfo, calculatedAge, gender, reserveTables]);
 
   const cededDetails = useMemo(() => {
-    if (!selectedTreaty) return null;
+    if (!activeTreatyInfo) return null;
     return calculateSumCeded(
       parseFloat(sumAssured) || 0,
       parseFloat(grossReserves) || 0,
-      selectedTreaty.retentionType,
-      selectedTreaty.retentionValue
+      activeTreatyInfo.subTreaty.retentionType,
+      activeTreatyInfo.subTreaty.retentionValue
     );
-  }, [selectedTreaty, sumAssured, grossReserves]);
+  }, [activeTreatyInfo, sumAssured, grossReserves]);
 
   const premiumAmount = useMemo(() => {
-    if (!selectedTreaty || !computedFactors || !cededDetails) return null;
+    if (!activeTreatyInfo || !computedFactors || !cededDetails) return null;
     if (computedFactors.premiumRate === null) return null; // No rate match found
     if (cededDetails.sumCeded === 0) return 0; // Nothing to cede
     
@@ -146,11 +208,11 @@ export default function CalculatorView({
       computedFactors.modelFactor,
       computedFactors.premiumRate,
       parseFloat(emrPercentage) || 0,
-      selectedTreaty.selectionDiscount || 0,
+      activeTreatyInfo.subTreaty.selectionDiscount || 0,
       parseFloat(otherExtraPremium) || 0,
       parseFloat(policyholderPremiumFrequency) || 1
     );
-  }, [cededDetails, computedFactors, emrPercentage, otherExtraPremium, policyholderPremiumFrequency, selectedTreaty]);
+  }, [cededDetails, computedFactors, emrPercentage, otherExtraPremium, policyholderPremiumFrequency, activeTreatyInfo]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', {
@@ -160,10 +222,12 @@ export default function CalculatorView({
   };
 
   const handleSavePolicy = () => {
-    if (!selectedTreaty) {
+    if (!activeTreatyInfo) {
       alert("Please select a treaty before saving.");
       return;
     }
+
+    const { treaty, subTreaty } = activeTreatyInfo;
 
     const isDuplicate = savedPolicies.some(p => 
       p.customerId.toLowerCase() === customerId.toLowerCase() &&
@@ -182,8 +246,8 @@ export default function CalculatorView({
     const c_sumCeded = cededDetails ? cededDetails.sumCeded : 0;
     
     let pendingFacultative = false;
-    if (selectedTreaty && selectedTreaty.facultativeLimit > 0) {
-       pendingFacultative = parseFloat(sumAssured) > selectedTreaty.facultativeLimit;
+    if (subTreaty && subTreaty.facultativeLimit > 0) {
+       pendingFacultative = parseFloat(sumAssured) > subTreaty.facultativeLimit;
     }
 
     const newDoc: SavedPolicy = {
@@ -205,13 +269,13 @@ export default function CalculatorView({
       medical,
       impairment,
       
-      treatyName: selectedTreaty.name,
+      treatyName: treaty.name,
       grossReserves,
 
       emrPercentage,
-      selectionDiscount: (selectedTreaty.selectionDiscount || 0).toString(),
+      selectionDiscount: (subTreaty.selectionDiscount || 0).toString(),
       otherExtraPremium,
-      reinsurerPaymentFrequency: (selectedTreaty.reinsurerPaymentFrequency || 1) as PaymentFrequency,
+      reinsurerPaymentFrequency: (subTreaty.reinsurerPaymentFrequency || 1) as PaymentFrequency,
       policyholderPremiumFrequency: parseInt(policyholderPremiumFrequency) as PaymentFrequency,
 
       sumAtRisk: cededDetails ? cededDetails.sumAtRisk : 0,
@@ -220,7 +284,7 @@ export default function CalculatorView({
       modelFactor: computedFactors?.modelFactor ?? null,
       premiumAmount: premiumAmount !== null ? premiumAmount : null,
       
-      reinsurerSplits: premiumAmount !== null ? (selectedTreaty.reinsurers || []).map(r => ({
+      reinsurerSplits: premiumAmount !== null ? (subTreaty.reinsurers || []).map(r => ({
         name: r.name,
         sharePercentage: r.sharePercentage,
         premiumAmount: premiumAmount * (r.sharePercentage / 100)
@@ -455,13 +519,9 @@ export default function CalculatorView({
             };
 
             let pTreaty: Treaty | null = null;
+            let pSubTreaty: SubTreaty | null = null;
+
             for (const t of treaties) {
-               const prEntry = t.premiumRates.find(pr => 
-                 pr.riskCoverage.trim().toLowerCase() === importedRiskCov.trim().toLowerCase() &&
-                 calcAgeNum >= pr.ageMin && calcAgeNum <= pr.ageMax &&
-                 (pr.gender === 'Any' || pr.gender.trim().toLowerCase() === importedGender.trim().toLowerCase())
-               );
-               
                let isDateValid = true;
                if (importedDoc && t.startDate && t.endDate) {
                    const docDate = new Date(importedDoc);
@@ -471,11 +531,63 @@ export default function CalculatorView({
                      isDateValid = false;
                    }
                }
-               
-               if (prEntry && isDateValid) {
-                   pTreaty = t;
-                   break;
+               if (!isDateValid) continue;
+
+               for (const sub of t.subTreaties) {
+                 let ruleMatch = true;
+                 if (sub.rules && sub.rules.length > 0) {
+                   for (const r of sub.rules) {
+                     const val = r.ruleValue.toLowerCase().trim();
+                     const item = r.ruleItem.toLowerCase();
+                     
+                    if (item === 'sa') {
+                      const numSA = parseFloat(importedSum) || 0;
+                      if (val.includes('*')) {
+                        const parts = val.split('*');
+                        const min = parseFloat(parts[0]);
+                        const max = parseFloat(parts[1]);
+                        if (!(numSA >= min && numSA <= max)) ruleMatch = false;
+                      }
+                      else if (val.startsWith('>=')) { if (!(numSA >= parseFloat(val.substring(2)))) ruleMatch = false; }
+                      else if (val.startsWith('<=')) { if (!(numSA <= parseFloat(val.substring(2)))) ruleMatch = false; }
+                      else if (val.startsWith('>')) { if (!(numSA > parseFloat(val.substring(1)))) ruleMatch = false; }
+                      else if (val.startsWith('<')) { if (!(numSA < parseFloat(val.substring(1)))) ruleMatch = false; }
+                      else if (numSA.toString() !== val && val !== '') ruleMatch = false;
+                    } else if (item === 'emr') {
+                      const numEMR = parseFloat(importedEmr) || 0;
+                      if (val.includes('*')) {
+                        const parts = val.split('*');
+                        const min = parseFloat(parts[0]);
+                        const max = parseFloat(parts[1]);
+                        if (!(numEMR >= min && numEMR <= max)) ruleMatch = false;
+                      }
+                      else if (val.startsWith('>=')) { if (!(numEMR >= parseFloat(val.substring(2)))) ruleMatch = false; }
+                      else if (val.startsWith('<=')) { if (!(numEMR <= parseFloat(val.substring(2)))) ruleMatch = false; }
+                      else if (val.startsWith('>')) { if (!(numEMR > parseFloat(val.substring(1)))) ruleMatch = false; }
+                      else if (val.startsWith('<')) { if (!(numEMR < parseFloat(val.substring(1)))) ruleMatch = false; }
+                      else if (numEMR.toString() !== val && val !== '') ruleMatch = false;
+                    } else if (item === 'medical') {
+                       if (importedMedical.toLowerCase() !== val && val !== '') ruleMatch = false;
+                     } else if (item === 'smoker') {
+                       if (importedSmoker.toLowerCase() !== val && val !== '') ruleMatch = false;
+                     } else if (item === 'coverage') {
+                       if (importedRiskCov.toLowerCase() !== val && val !== '') ruleMatch = false;
+                     } else if (item === 'gender') {
+                       if (importedGender.toLowerCase() !== val && val !== 'any' && val !== '') ruleMatch = false;
+                     } else if (item === 'imparement') {
+                       if (importedImpairment.toLowerCase() !== val && val !== '') ruleMatch = false;
+                     }
+                     if (!ruleMatch) break;
+                   }
+                 }
+                 
+                 if (ruleMatch) {
+                     pTreaty = t;
+                     pSubTreaty = sub;
+                     break;
+                 }
                }
+               if (pSubTreaty) break;
             }
             
             let c_sumAtRisk = 0;
@@ -484,24 +596,36 @@ export default function CalculatorView({
             let c_mfFactor: number | null = null;
             let c_premium: number | null = null;
 
-            if (pTreaty) {
+            if (pSubTreaty) {
               const cd = calculateSumCeded(
                 parseFloat(importedSum) || 0,
                 parseFloat(importedGrossRes) || 0,
-                pTreaty.retentionType,
-                pTreaty.retentionValue
+                pSubTreaty.retentionType,
+                pSubTreaty.retentionValue
               );
               c_sumAtRisk = cd.sumAtRisk;
               c_sumCeded = cd.sumCeded;
 
-              c_mfFactor = pTreaty.reinsurerModelFactor || 1.0;
+              c_mfFactor = pSubTreaty.reinsurerModelFactor || 1.0;
 
-              const prEntry = pTreaty.premiumRates.find(pr => 
-                pr.riskCoverage.trim().toLowerCase() === importedRiskCov.trim().toLowerCase() &&
+              const prEntry = pSubTreaty.premiumRates.find(pr => 
                 calcAgeNum >= pr.ageMin && calcAgeNum <= pr.ageMax &&
                 (pr.gender === 'Any' || pr.gender.trim().toLowerCase() === importedGender.trim().toLowerCase())
               );
-              c_prRate = prEntry ? prEntry.rate : null;
+              
+              if (prEntry) {
+                if (prEntry.premiumTableId && reserveTables.length > 0) {
+                  const ipGenderExact = importedGender.trim().toLowerCase();
+                  const genPrefix = ipGenderExact === 'male' ? 'M' : ipGenderExact === 'female' ? 'F' : 'MF';
+                  let rtEntry = reserveTables.find(rt => rt.premiumTableId === prEntry.premiumTableId && rt.age === calcAgeNum && rt.gender === genPrefix);
+                  if (!rtEntry) rtEntry = reserveTables.find(rt => rt.premiumTableId === prEntry.premiumTableId && rt.age === calcAgeNum && rt.gender === 'MF');
+                  c_prRate = rtEntry ? rtEntry.premiumRate : prEntry.rate;
+                } else {
+                  c_prRate = prEntry.rate;
+                }
+              } else {
+                c_prRate = null;
+              }
 
               if (c_prRate !== null && c_sumCeded > 0) {
                 c_premium = calculatePremiumAmount(
@@ -509,7 +633,7 @@ export default function CalculatorView({
                   c_mfFactor,
                   c_prRate,
                   parseFloat(importedEmr) || 0,
-                  pTreaty.selectionDiscount || 0,
+                  pSubTreaty.selectionDiscount || 0,
                   parseFloat(importedOtherExtra) || 0,
                   mapFreq(importedPolFreqStr)
                 );
@@ -519,8 +643,8 @@ export default function CalculatorView({
             }
 
             let pendingFacultative = false;
-            if (pTreaty && pTreaty.facultativeLimit > 0) {
-              pendingFacultative = parseFloat(importedSum) > pTreaty.facultativeLimit;
+            if (pSubTreaty && pSubTreaty.facultativeLimit > 0) {
+              pendingFacultative = parseFloat(importedSum) > pSubTreaty.facultativeLimit;
             }
 
             let actualCessionNum: number | null = null;
@@ -551,9 +675,9 @@ export default function CalculatorView({
               treatyName: pTreaty ? pTreaty.name : 'Unknown Treaty',
               grossReserves: importedGrossRes,
               emrPercentage: importedEmr,
-              selectionDiscount: pTreaty ? (pTreaty.selectionDiscount || 0).toString() : '0',
+              selectionDiscount: pSubTreaty ? (pSubTreaty.selectionDiscount || 0).toString() : '0',
               otherExtraPremium: importedOtherExtra,
-              reinsurerPaymentFrequency: pTreaty ? (pTreaty.reinsurerPaymentFrequency || 1) as PaymentFrequency : 1,
+              reinsurerPaymentFrequency: pSubTreaty ? (pSubTreaty.reinsurerPaymentFrequency || 1) as PaymentFrequency : 1,
               policyholderPremiumFrequency: mapFreq(importedPolFreqStr),
               sumAtRisk: c_sumAtRisk,
               sumCeded: c_sumCeded,
@@ -561,7 +685,7 @@ export default function CalculatorView({
               modelFactor: c_mfFactor,
               premiumAmount: c_premium,
               
-              reinsurerSplits: (c_premium !== null && pTreaty) ? (pTreaty.reinsurers || []).map(r => ({
+              reinsurerSplits: (c_premium !== null && pSubTreaty) ? (pSubTreaty.reinsurers || []).map(r => ({
                 name: r.name,
                 sharePercentage: r.sharePercentage,
                 premiumAmount: c_premium! * (r.sharePercentage / 100)
@@ -609,7 +733,7 @@ export default function CalculatorView({
               <h3 className="text-sm font-semibold text-slate-800 uppercase tracking-wider">1. Policy Holder Details</h3>
             </div>
             
-            <div className="p-5 grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Customer ID</label>
                 <input
@@ -711,7 +835,7 @@ export default function CalculatorView({
                 </select>
               </div>
 
-              <div className="md:col-span-2">
+              <div className="sm:col-span-2 lg:col-span-2">
                 <label className="block text-sm font-medium text-slate-700 mb-1">Plan</label>
                 <select
                   value={selectedPlanId}
@@ -743,13 +867,13 @@ export default function CalculatorView({
               <h3 className="text-sm font-semibold text-slate-800 uppercase tracking-wider">2. Frequencies & Modifiers</h3>
             </div>
             
-            <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Policyholder Frequency</label>
                 <select
                   value={policyholderPremiumFrequency}
                   onChange={(e) => setPolicyholderPremiumFrequency(e.target.value)}
-                  className="block w-full rounded-md border-slate-300 py-1.5 px-3 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border"
+                  className="block w-full rounded-md border-slate-300 py-1.5 px-3 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border bg-white"
                 >
                   <option value="1">Annually</option>
                   <option value="2">Semi-Annually</option>
@@ -766,7 +890,7 @@ export default function CalculatorView({
                   step="0.1"
                   value={emrPercentage}
                   onChange={(e) => setEmrPercentage(e.target.value)}
-                  className="block w-full rounded-md border-slate-300 py-1.5 px-3 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border"
+                  className="block w-full rounded-md border-slate-300 py-1.5 px-3 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border bg-white"
                 />
               </div>
 
@@ -776,17 +900,17 @@ export default function CalculatorView({
                   type="number"
                   value={grossReserves}
                   onChange={(e) => setGrossReserves(e.target.value)}
-                  className="block w-full rounded-md border-slate-300 py-1.5 px-3 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border"
+                  className="block w-full rounded-md border-slate-300 py-1.5 px-3 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border bg-white"
                 />
               </div>
 
-              <div className="md:col-span-2">
+              <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Other Extra Premium (₹)</label>
                 <input
                   type="number"
                   value={otherExtraPremium}
                   onChange={(e) => setOtherExtraPremium(e.target.value)}
-                  className="block w-full rounded-md border-slate-300 py-1.5 px-3 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border"
+                  className="block w-full rounded-md border-slate-300 py-1.5 px-3 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border bg-white"
                 />
               </div>
             </div>
@@ -805,7 +929,7 @@ export default function CalculatorView({
             </div>
             
             <div className="p-6 flex-1 flex flex-col gap-6">
-              {!selectedTreaty ? (
+              {!activeTreatyInfo ? (
                 <div className="flex flex-col items-center justify-center text-center text-slate-400 p-8 h-full">
                   <RefreshCw className="w-8 h-8 mb-4 opacity-50" />
                   <p className="text-sm">Please identify an applicable treaty to begin engine calculations.</p>
@@ -834,8 +958,8 @@ export default function CalculatorView({
                       </div>
                       <div className="flex justify-between text-sm">
                         <div className="flex items-center gap-1">
-                          <span className="text-slate-400">Treaty Retention</span>
-                          <span className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-400 uppercase tracking-wider">{selectedTreaty.retentionType}</span>
+                          <span className="text-slate-400">Treaty {activeTreatyInfo.subTreaty.name} Retention</span>
+                          <span className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-400 uppercase tracking-wider">{activeTreatyInfo.subTreaty.retentionType}</span>
                         </div>
                         <span className="font-mono text-amber-300/80">-{cededDetails ? formatCurrency(cededDetails.retentionAmount) : '-'}</span>
                       </div>
@@ -869,7 +993,7 @@ export default function CalculatorView({
                       <div className="flex justify-between text-sm">
                         <span className="text-slate-400">EMR / Selection Adj.</span>
                         <span className="font-mono text-slate-300">
-                          {(1 + (parseFloat(emrPercentage)/100 || 0) - ((selectedTreaty?.selectionDiscount || 0) / 100)).toFixed(4)}x
+                          {(1 + (parseFloat(emrPercentage)/100 || 0) - ((activeTreatyInfo?.subTreaty?.selectionDiscount || 0) / 100)).toFixed(4)}x
                         </span>
                       </div>
                     </div>

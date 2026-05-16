@@ -44,6 +44,25 @@ export default function CompanyView({ config, setConfig, treaties }: CompanyView
     e.preventDefault();
     if (!newReinsurer.name || !newReinsurer.reinsurerId) return;
 
+    // Validate Reinsurer Name strictly (only A-Z, a-z, and spaces)
+    if (!/^[A-Za-z\s]+$/.test(newReinsurer.name)) {
+      setDeleteError('Reinsurer name can only contain alphabetic characters and spaces.');
+      setTimeout(() => setDeleteError(null), 5000);
+      return;
+    }
+
+    // Validate uniqueness of Reinsurer Name and ID
+    const isDuplicate = config.reinsurers?.some(
+      r => r.name.toLowerCase() === newReinsurer.name.toLowerCase() || 
+           r.reinsurerId.toLowerCase() === newReinsurer.reinsurerId.toLowerCase()
+    );
+
+    if (isDuplicate) {
+      setDeleteError('Reinsurer name and ID must be unique.');
+      setTimeout(() => setDeleteError(null), 5000);
+      return;
+    }
+
     setConfig({
       ...config,
       reinsurers: [...(config.reinsurers || []), { 
@@ -65,7 +84,9 @@ export default function CompanyView({ config, setConfig, treaties }: CompanyView
     
     // Check if used in any treaty
     const isUsed = treaties.some(t => 
-      t.reinsurers.some(tr => tr.name === labelStr)
+      t.subTreaties && t.subTreaties.some(st => 
+        st.reinsurers && st.reinsurers.some(tr => tr.name === labelStr)
+      )
     );
 
     if (isUsed) {
@@ -118,7 +139,7 @@ export default function CompanyView({ config, setConfig, treaties }: CompanyView
         </div>
 
         <div className="p-6 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-3 gap-6">
             <div className="space-y-2">
               <label htmlFor="name" className="block text-sm font-medium text-slate-700">Company Name</label>
               <input
@@ -148,14 +169,14 @@ export default function CompanyView({ config, setConfig, treaties }: CompanyView
               </select>
             </div>
 
-            <div className="space-y-2 md:col-span-2">
+            <div className="space-y-2">
               <label htmlFor="lineOfBusiness" className="block text-sm font-medium text-slate-700">Line of Business</label>
               <select
                 id="lineOfBusiness"
                 name="lineOfBusiness"
                 value={config.lineOfBusiness}
                 onChange={handleChange}
-                className="w-full max-w-md px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
               >
                 <option value="">Select Line of Business...</option>
                 <option value="Individual Domestic">Individual Domestic</option>
@@ -188,32 +209,32 @@ export default function CompanyView({ config, setConfig, treaties }: CompanyView
              </div>
           )}
 
-          <form onSubmit={handleAddReinsurer} className="bg-slate-50 p-4 rounded-lg border border-slate-200 mb-6 flex flex-col md:flex-row items-end gap-4 shadow-sm">
-             <div className="w-full space-y-1">
+          <form onSubmit={handleAddReinsurer} className="bg-slate-50 p-4 rounded-lg border border-slate-200 mb-6 grid grid-cols-1 md:grid-cols-3 gap-4 items-end shadow-sm">
+             <div className="space-y-1">
                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider">New Reinsurer Name</label>
                <input
                  type="text"
                  value={newReinsurer.name}
                  onChange={e => setNewReinsurer({ ...newReinsurer, name: e.target.value })}
-                 className="w-full px-3 py-2 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm bg-white"
+                 className="w-full px-3 py-2 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
                  placeholder="e.g. Swiss Re"
                  required
                />
              </div>
-             <div className="w-full space-y-1">
+             <div className="space-y-1">
                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider">Reinsurer ID</label>
                <input
                  type="text"
                  value={newReinsurer.reinsurerId}
                  onChange={e => setNewReinsurer({ ...newReinsurer, reinsurerId: e.target.value })}
-                 className="w-full px-3 py-2 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm font-mono bg-white"
+                 className="w-full px-3 py-2 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono bg-white"
                  placeholder="e.g. SRE-123"
                  required
                />
              </div>
              <button
                type="submit"
-               className="shrink-0 flex items-center gap-2 bg-slate-800 text-white px-4 py-2 rounded font-medium text-sm hover:bg-slate-700 transition shadow-sm h-[38px]"
+               className="w-full flex justify-center items-center gap-2 bg-slate-800 text-white px-4 py-2 rounded font-medium text-sm hover:bg-slate-700 transition shadow-sm h-[38px]"
              >
                <Plus className="w-4 h-4" /> Add Partner
              </button>
@@ -226,19 +247,19 @@ export default function CompanyView({ config, setConfig, treaties }: CompanyView
               No reinsurers added yet. Add a partner above to begin.
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {config.reinsurers.map(r => (
-                <div key={r.id} className="flex justify-between items-center bg-white p-4 rounded-lg border border-slate-200 shadow-sm hover:border-slate-300 transition-colors">
+                <div key={r.id} className="flex justify-between items-start bg-white p-4 rounded-lg border border-slate-200 shadow-sm hover:border-slate-300 transition-colors">
                   <div className="flex flex-col">
                     <span className="font-semibold text-slate-800">{r.name}</span>
                     <span className="text-sm font-mono text-slate-500">ID: {r.reinsurerId}</span>
                   </div>
                   <button
                     onClick={() => removeReinsurer(r.id)}
-                    className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors -mr-1"
                     title="Remove Reinsurer"
                   >
-                    <Trash2 className="w-5 h-5" />
+                    <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
               ))}
