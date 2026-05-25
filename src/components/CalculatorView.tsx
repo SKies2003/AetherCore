@@ -242,8 +242,8 @@ export default function CalculatorView({
       return;
     }
 
-    if (dateOfCommencement < processInterval.startDate || dateOfCommencement > processInterval.endDate) {
-      alert(`Date of Commencement (${dateOfCommencement}) does not fall within the selected process interval (${processInterval.startDate} to ${processInterval.endDate}). Cession will not be created.`);
+    if (dateOfCommencement > processInterval.endDate) {
+      alert(`Date of Commencement (${dateOfCommencement}) is after the selected process interval (${processInterval.endDate}). Cession will not be created.`);
       return;
     }
 
@@ -254,18 +254,11 @@ export default function CalculatorView({
 
     const { treaty, subTreaty } = activeTreatyInfo;
 
-    const isDuplicate = savedPolicies.some(p => 
+    const existingPolicy = savedPolicies.find(p => 
       p.customerId.toLowerCase() === customerId.toLowerCase() &&
       p.policyNumber.toLowerCase() === policyNumber.toLowerCase() &&
-      p.dateOfCommencement === dateOfCommencement &&
-      p.riskCoverage.toLowerCase() === riskCoverage.toLowerCase() &&
-      p.dob === dob
+      p.riskCoverage.toLowerCase() === riskCoverage.toLowerCase()
     );
-
-    if (isDuplicate) {
-      alert(`Cession already exists (Duplicate found for CustomerID: ${customerId}, PolicyNumber: ${policyNumber})`);
-      return;
-    }
 
     const c_sumAtRisk = cededDetails ? cededDetails.sumAtRisk : 0;
     const c_sumCeded = cededDetails ? cededDetails.sumCeded : 0;
@@ -275,31 +268,93 @@ export default function CalculatorView({
        pendingFacultative = parseFloat(sumAssured) > subTreaty.facultativeLimit;
     }
 
-    const calcFromDate = new Date(dateOfCommencement);
-    const monthsToAdd = 12 / (subTreaty.reinsurerPaymentFrequency || 1);
-    const calcToDate = new Date(calcFromDate);
-    calcToDate.setMonth(calcToDate.getMonth() + monthsToAdd);
-    calcToDate.setDate(calcToDate.getDate() - 1);
-    
-    const calcFrom = calcFromDate.toISOString().split('T')[0];
-    const calcTo = calcToDate.toISOString().split('T')[0];
+    if (existingPolicy && existingPolicy.cessionStatus === 'Accepted') {
+       pendingFacultative = false;
+    }
 
-    const transactions = (c_sumCeded > 0 && !pendingFacultative) ? (subTreaty.reinsurers || []).map(r => ({
-      id: crypto.randomUUID(),
-      calcFrom,
-      calcTo,
-      reinsurerId: r.name,
-      reinsurerName: r.name,
-      sumCeded: c_sumCeded * (r.sharePercentage / 100),
-      premiumAmount: (premiumAmount || 0) * (r.sharePercentage / 100),
-      processIntervalId: selectedIntervalId
-    })) : [];
+    const docDate = new Date(dateOfCommencement);
+    const freq = subTreaty.reinsurerPaymentFrequency || 1;
+    const monthsToAdd = 12 / freq;
+
+    let nextCalcFrom = new Date(docDate);
+    let loopCounter = 0;
+    const newTransactions: any[] = [];
+    
+    const existingTransactions = existingPolicy?.transactions || [];
+
+    const generateBatchId = () => {
+      const now = new Date();
+      return `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
+    };
+    
+    let currentMaxTrid = Math.max(0, ...savedPolicies.flatMap(p => (p.transactions || []).map(t => t.trid || 0)));
+    const runBatchId = generateBatchId();
+
+    while (nextCalcFrom.toISOString().split('T')[0] <= processInterval.endDate && loopCounter < 1000) {
+       const calcFromStr = nextCalcFrom.toISOString().split('T')[0];
+       
+       const nextCalcTo = new Date(nextCalcFrom);
+       nextCalcTo.setMonth(nextCalcTo.getMonth() + monthsToAdd);
+       nextCalcTo.setDate(nextCalcTo.getDate() - 1);
+       const calcToStr = nextCalcTo.toISOString().split('T')[0];
+       
+       if (calcFromStr >= processInterval.startDate && calcFromStr <= processInterval.endDate) {
+           const alreadyExists = existingTransactions.some(t => t.calcFrom === calcFromStr);
+           if (!alreadyExists && c_sumCeded > 0 && !pendingFacultative) {
+               subTreaty.reinsurers?.forEach(r => {
+                   currentMaxTrid++;
+                   newTransactions.push({
+                     id: crypto.randomUUID(),
+                     trid: currentMaxTrid,
+                     batchId: runBatchId,
+                     calcFrom: calcFromStr,
+                     calcTo: calcToStr,
+                     reinsurerId: r.name,
+                     reinsurerName: r.name,
+                     sumCeded: c_sumCeded * (r.sharePercentage / 100),
+                     premiumAmount: (premiumAmount || 0) * (r.sharePercentage / 100),
+                     processIntervalId: selectedIntervalId
+                   });
+               });
+           }
+       }
+       
+       nextCalcFrom.setMonth(nextCalcFrom.getMonth() + monthsToAdd);
+       loopCounter++;
+    }
+
+    if (existingPolicy) {
+        if (existingPolicy.sumAssured === sumAssured && newTransactions.length === 0) {
+             alert(`No new transactions generated for the selected process interval, and Sum Assured has not changed.`);
+             return;
+        }
+
+        setSavedPolicies(prev => prev.map(p => {
+             if (p.id === existingPolicy.id) {
+                 return {
+                     ...p,
+                     sumAssured,
+                     sumAtRisk: c_sumAtRisk,
+                     sumCeded: c_sumCeded,
+                     premiumRate: computedFactors?.premiumRate ?? null,
+                     modelFactor: computedFactors?.modelFactor ?? null,
+                     premiumAmount: premiumAmount !== null ? premiumAmount : null,
+                     cessionStatus: pendingFacultative ? 'Facultative Pending' : (c_sumCeded > 0 ? (existingPolicy.cessionStatus === 'Accepted' ? 'Accepted' : 'Ceded') : undefined),
+                     processIntervalId: existingPolicy.processIntervalId,
+                     transactions: [...existingTransactions, ...newTransactions]
+                 };
+             }
+             return p;
+        }));
+        
+        alert("Cession updated successfully.");
+        return;
+    }
 
     const newDoc: SavedPolicy = {
       id: crypto.randomUUID(),
       cessionStatus: pendingFacultative ? 'Facultative Pending' : (c_sumCeded > 0 ? 'Ceded' : undefined),
       actualCessionNo: (c_sumCeded > 0 && !pendingFacultative) ? (Math.max(...savedPolicies.map(p => p.actualCessionNo || 0), 0) + 1) : null,
-      processIntervalId: selectedIntervalId,
       customerId,
       policyNumber,
       policyHolderName,
@@ -338,7 +393,8 @@ export default function CalculatorView({
         premiumAmount: premiumAmount * (r.sharePercentage / 100)
       })) : [],
       lineOfBusiness: companyConfig.lineOfBusiness,
-      transactions
+      processIntervalId: selectedIntervalId,
+      transactions: newTransactions
     };
 
     setSavedPolicies(prev => [...prev, newDoc]);
@@ -417,8 +473,15 @@ export default function CalculatorView({
 
       const headers = getCols(rows[0]).map(h => h.trim().toLowerCase());
      
-      const newPolicies: SavedPolicy[] = [];
-      let currentMaxCessionNo = Math.max(...savedPolicies.map(p => p.actualCessionNo || 0), 0);
+      const finalPolicies = [...savedPolicies];
+      let currentMaxCessionNo = Math.max(...finalPolicies.map(p => p.actualCessionNo || 0), 0);
+      let currentMaxTrid = Math.max(0, ...finalPolicies.flatMap(p => (p.transactions || []).map(t => t.trid || 0)));
+
+      const generateBatchId = () => {
+        const now = new Date();
+        return `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
+      };
+      const runBatchId = generateBatchId();
 
       try {
         for (let i = 1; i < rows.length; i++) {
@@ -500,30 +563,18 @@ export default function CalculatorView({
             const importedDob = parseAndFormatDate(importedDobRaw);
 
             const processInterval = processIntervals.find(inv => inv.id === selectedIntervalId);
-            if (processInterval && (importedDoc < processInterval.startDate || importedDoc > processInterval.endDate)) {
-              console.log(`Skipping policy ${importedPolicy} because DOC ${importedDoc} is outside the selected interval.`);
+            if (processInterval && importedDoc > processInterval.endDate) {
+              console.log(`Skipping policy ${importedPolicy} because DOC ${importedDoc} is after the selected interval.`);
               continue;
             }
 
-            const isDuplicate = savedPolicies.some(p => 
+            let existingPolicyIndex = finalPolicies.findIndex(p => 
               p.customerId.toLowerCase() === importedCustomer.toLowerCase() &&
               p.policyNumber.toLowerCase() === importedPolicy.toLowerCase() &&
-              p.dateOfCommencement === importedDoc &&
-              p.riskCoverage.toLowerCase() === importedRiskCov.toLowerCase() &&
-              p.dob === importedDob
-            ) || newPolicies.some(p => 
-              p.customerId.toLowerCase() === importedCustomer.toLowerCase() &&
-              p.policyNumber.toLowerCase() === importedPolicy.toLowerCase() &&
-              p.dateOfCommencement === importedDoc &&
-              p.riskCoverage.toLowerCase() === importedRiskCov.toLowerCase() &&
-              p.dob === importedDob
+              p.riskCoverage.toLowerCase() === importedRiskCov.toLowerCase()
             );
 
-            if (isDuplicate) {
-              throw new Error(`Cession already exists (Duplicate found for CustomerID: ${importedCustomer}, PolicyNumber: ${importedPolicy})`);
-            }
-
-            // Allow duplicates for same policy but with new actualcessionno.
+            // Allow duplicates for same policy but with new actualcessionno.  (Actually, we just update the existing one)
             const mapVal = (sourceVal: string, mappings: {sourceValue: string, targetValue: string}[], defaultVal: string, fieldName: string) => {
               if (!sourceVal) return defaultVal;
               const match = mappings.find(m => m.sourceValue.toLowerCase() === sourceVal.toLowerCase());
@@ -709,32 +760,76 @@ export default function CalculatorView({
               pendingFacultative = parseFloat(importedSum) > pSubTreaty.facultativeLimit;
             }
 
-            let actualCessionNum: number | null = null;
-            if (c_sumCeded > 0 && !pendingFacultative) {
+            if (existingPolicyIndex !== -1 && finalPolicies[existingPolicyIndex].cessionStatus === 'Accepted') {
+              pendingFacultative = false;
+            }
+
+            let actualCessionNum: number | null = existingPolicyIndex !== -1 ? finalPolicies[existingPolicyIndex].actualCessionNo : null;
+            if (c_sumCeded > 0 && !pendingFacultative && actualCessionNum === null) {
               currentMaxCessionNo++;
               actualCessionNum = currentMaxCessionNo;
             }
 
-            const calcFromDate = new Date(importedDoc);
-            const monthsToAdd = 12 / (pSubTreaty?.reinsurerPaymentFrequency || 1);
-            const calcToDate = new Date(calcFromDate);
-            calcToDate.setMonth(calcToDate.getMonth() + monthsToAdd);
-            calcToDate.setDate(calcToDate.getDate() - 1);
-            const calcFrom = calcFromDate.toISOString().split('T')[0];
-            const calcTo = calcToDate.toISOString().split('T')[0];
+            const docDate = new Date(importedDoc);
+            const freq = pSubTreaty?.reinsurerPaymentFrequency || 1;
+            const monthsToAdd = 12 / freq;
 
-            const transactions = (c_sumCeded > 0 && !pendingFacultative && pSubTreaty) ? (pSubTreaty.reinsurers || []).map(r => ({
-              id: crypto.randomUUID(),
-              calcFrom,
-              calcTo,
-              reinsurerId: r.name,
-              reinsurerName: r.name,
-              sumCeded: c_sumCeded * (r.sharePercentage / 100),
-              premiumAmount: (c_premium || 0) * (r.sharePercentage / 100),
-              processIntervalId: selectedIntervalId
-            })) : [];
+            let nextCalcFrom = new Date(docDate);
+            let loopCounter = 0;
+            const newTransactions: any[] = [];
+            
+            const existingTransactions = existingPolicyIndex !== -1 ? (finalPolicies[existingPolicyIndex].transactions || []) : [];
 
-            newPolicies.push({
+            if (processInterval) {
+                while (nextCalcFrom.toISOString().split('T')[0] <= processInterval.endDate && loopCounter < 1000) {
+                   const calcFromStr = nextCalcFrom.toISOString().split('T')[0];
+                   
+                   const nextCalcTo = new Date(nextCalcFrom);
+                   nextCalcTo.setMonth(nextCalcTo.getMonth() + monthsToAdd);
+                   nextCalcTo.setDate(nextCalcTo.getDate() - 1);
+                   const calcToStr = nextCalcTo.toISOString().split('T')[0];
+                   
+                   if (calcFromStr >= processInterval.startDate && calcFromStr <= processInterval.endDate) {
+                       const alreadyExists = existingTransactions.some(t => t.calcFrom === calcFromStr);
+                       if (!alreadyExists && c_sumCeded > 0 && !pendingFacultative && pSubTreaty) {
+                           pSubTreaty.reinsurers?.forEach(r => {
+                               newTransactions.push({
+                                 id: crypto.randomUUID(),
+                                 trid: ++currentMaxTrid,
+                                 batchId: runBatchId,
+                                 calcFrom: calcFromStr,
+                                 calcTo: calcToStr,
+                                 reinsurerId: r.name,
+                                 reinsurerName: r.name,
+                                 sumCeded: c_sumCeded * (r.sharePercentage / 100),
+                                 premiumAmount: (c_premium || 0) * (r.sharePercentage / 100),
+                                 processIntervalId: selectedIntervalId
+                               });
+                           });
+                       }
+                   }
+                   
+                   nextCalcFrom.setMonth(nextCalcFrom.getMonth() + monthsToAdd);
+                   loopCounter++;
+                }
+            }
+
+            if (existingPolicyIndex !== -1) {
+                const ep = finalPolicies[existingPolicyIndex];
+                finalPolicies[existingPolicyIndex] = {
+                   ...ep,
+                   sumAssured: importedSum,
+                   sumAtRisk: c_sumAtRisk,
+                   sumCeded: c_sumCeded,
+                   premiumRate: c_prRate,
+                   modelFactor: c_mfFactor,
+                   premiumAmount: c_premium,
+                   cessionStatus: pendingFacultative ? 'Facultative Pending' : (c_sumCeded > 0 ? (ep.cessionStatus === 'Accepted' ? 'Accepted' : 'Ceded') : undefined),
+                   processIntervalId: ep.processIntervalId,
+                   transactions: [...existingTransactions, ...newTransactions]
+                };
+            } else {
+                finalPolicies.push({
               id: crypto.randomUUID(),
               cessionStatus: pendingFacultative ? 'Facultative Pending' : (c_sumCeded > 0 ? 'Ceded' : undefined),
               actualCessionNo: actualCessionNum,
@@ -774,11 +869,12 @@ export default function CalculatorView({
               })) : [],
               lineOfBusiness: companyConfig.lineOfBusiness,
               processIntervalId: selectedIntervalId,
-              transactions
+              transactions: newTransactions
             });
-          }
-        }
-        setSavedPolicies(prev => [...prev, ...newPolicies]);
+          } // close else block
+          } // close if cols.length >= 5
+        } // close for loop
+        setSavedPolicies(finalPolicies);
       } catch (err: any) {
         alert(err.message || 'Invalid input data');
       }
@@ -816,23 +912,33 @@ export default function CalculatorView({
             <div className="p-4 border-b border-slate-200 bg-slate-50/50">
               <h3 className="text-sm font-semibold text-slate-800 uppercase tracking-wider">0. Process Interval Selection</h3>
             </div>
-            <div className="p-5">
-              <label className="block text-sm font-medium text-slate-700 mb-1">Select Process Interval *</label>
-              <select
-                value={selectedIntervalId}
-                onChange={(e) => setSelectedIntervalId(e.target.value)}
-                className="block w-full max-w-sm rounded-md border-slate-300 py-1.5 px-3 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border"
-              >
-                <option value="">Select an Interval...</option>
-                {processIntervals.map(inv => {
-                  const py = processYears.find(y => y.id === inv.processYearId);
-                  return (
+            <div className="p-5 flex flex-col items-start gap-2">
+              <div className="w-full max-w-sm">
+                <label className="block text-sm font-medium text-slate-700 mb-1">Select Process Interval *</label>
+                <select
+                  value={selectedIntervalId}
+                  onChange={(e) => setSelectedIntervalId(e.target.value)}
+                  className="block w-full rounded-md border-slate-300 py-1.5 px-3 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border"
+                >
+                  <option value="">Select an Interval...</option>
+                  {processIntervals.map(inv => (
                     <option key={inv.id} value={inv.id}>
-                      {inv.description} ({inv.startDate} to {inv.endDate}) {py ? `[${py.description}]` : ''}
+                      {inv.name}
                     </option>
+                  ))}
+                </select>
+              </div>
+              {selectedIntervalId && (() => {
+                const selectedInv = processIntervals.find(inv => inv.id === selectedIntervalId);
+                if (selectedInv) {
+                  return (
+                    <div className="text-xs text-blue-600 font-mono">
+                      {selectedInv.startDate} to {selectedInv.endDate}
+                    </div>
                   );
-                })}
-              </select>
+                }
+                return null;
+              })()}
             </div>
           </div>
 

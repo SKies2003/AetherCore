@@ -223,7 +223,7 @@ export default function App() {
           </div>
 
           <div className={activeTab === 'facultative' ? 'block' : 'hidden'}>
-            <FacultativeView savedPolicies={savedPolicies} setSavedPolicies={setSavedPolicies} companyConfig={companyConfig} />
+            <FacultativeView savedPolicies={savedPolicies} setSavedPolicies={setSavedPolicies} companyConfig={companyConfig} processIntervals={processIntervals} treaties={treaties} />
           </div>
 
           <div className={activeTab === 'accounts' ? 'block' : 'hidden'}>

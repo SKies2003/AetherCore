@@ -99,9 +99,9 @@ export interface PolicyInput {
 
 export interface ProcessYear {
   id: string;
+  name: string;
   startDate: string;
   endDate: string;
-  description: string;
 }
 
 export interface ProcessInterval {
@@ -109,11 +109,13 @@ export interface ProcessInterval {
   processYearId: string;
   startDate: string;
   endDate: string;
-  description: string;
+  name: string;
 }
 
 export interface CessionTransaction {
   id: string;
+  trid?: number;
+  batchId?: string;
   calcFrom: string;
   calcTo: string;
   reinsurerId: string;

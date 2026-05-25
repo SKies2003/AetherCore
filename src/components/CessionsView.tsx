@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { SavedPolicy, CedingCompanyConfig, ProcessInterval } from '../types';
-import { FileSpreadsheet, Trash2, Search, Eye, X, Download } from 'lucide-react';
+import { FileSpreadsheet, Trash2, Search, Eye, X, Download, Play, Settings } from 'lucide-react';
 
 export default function CessionsView({
   savedPolicies,
@@ -80,7 +80,7 @@ export default function CessionsView({
         ? p.reinsurerSplits.map(s => `${s.name}: ${s.sharePercentage}%`).join(' | ')
         : 'N/A';
         
-      const interval = processIntervals.find(inv => inv.id === p.processIntervalId)?.description || 'N/A';
+      const interval = processIntervals.find(inv => inv.id === p.processIntervalId)?.name || 'N/A';
 
       return [
         p.actualCessionNo ?? '',
@@ -133,13 +133,15 @@ export default function CessionsView({
           <h2 className="text-xl font-semibold text-slate-900">Cessions Database</h2>
           <p className="text-sm text-slate-500 mt-1">View, search and manage computed reinsurance cessions.</p>
         </div>
-        <button
-          onClick={handleExportCSV}
-          className="flex items-center gap-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 px-4 py-2 rounded-md font-medium text-sm transition-colors"
-        >
-          <Download className="w-4 h-4" />
-          Export to CSV
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handleExportCSV}
+            className="flex items-center gap-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 px-4 py-2 rounded-md font-medium text-sm transition-colors cursor-pointer"
+          >
+            <Download className="w-4 h-4" />
+            Export to CSV
+          </button>
+        </div>
       </div>
 
       <div className="bg-white border border-slate-200 rounded-lg shadow-sm flex-1 min-h-[400px]">
@@ -175,44 +177,60 @@ export default function CessionsView({
           <table className="min-w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
               <tr>
-                <th scope="col" className="px-6 py-3 text-left font-semibold text-slate-500 uppercase tracking-wider">Cess. No</th>
-                <th scope="col" className="px-6 py-3 text-left font-semibold text-slate-500 uppercase tracking-wider">Process Interval</th>
-                <th scope="col" className="px-6 py-3 text-left font-semibold text-slate-500 uppercase tracking-wider">Customer / Policy</th>
-                <th scope="col" className="px-6 py-3 text-left font-semibold text-slate-500 uppercase tracking-wider">Treaty / Sub-Treaty</th>
-                <th scope="col" className="px-6 py-3 text-center font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
+                <th scope="col" className="px-6 py-3 text-left font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Cess. No</th>
+                <th scope="col" className="px-6 py-3 text-left font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Process Interval</th>
+                <th scope="col" className="px-6 py-3 text-left font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Customer Name</th>
+                <th scope="col" className="px-6 py-3 text-left font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Customer ID</th>
+                <th scope="col" className="px-6 py-3 text-left font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Policy No</th>
+                <th scope="col" className="px-6 py-3 text-left font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Treaty</th>
+                <th scope="col" className="px-6 py-3 text-left font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Coverage</th>
+                <th scope="col" className="px-6 py-3 text-left font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Plan Name</th>
+                <th scope="col" className="px-6 py-3 text-right font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Sum Assured</th>
+                <th scope="col" className="px-6 py-3 text-right font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Sum Ceded</th>
+                <th scope="col" className="px-6 py-3 text-center font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-slate-200">
               {filteredPolicies.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center text-slate-500">
+                  <td colSpan={11} className="px-6 py-12 text-center text-slate-500">
                     No cessions found matching your search.
                   </td>
                 </tr>
               ) : (
                 filteredPolicies.map((p) => {
-                  const interval = processIntervals.find(inv => inv.id === p.processIntervalId)?.description || 'N/A';
+                  const interval = processIntervals.find(inv => inv.id === p.processIntervalId)?.name || 'N/A';
                   return (
                   <tr key={p.id} className={`hover:bg-slate-50 transition-colors cursor-pointer ${selectedCessionForTransactions?.id === p.id ? 'bg-blue-50/50' : ''}`} onClick={() => setSelectedCessionForTransactions(p)}>
                     <td className="px-6 py-4 whitespace-nowrap text-slate-500 font-mono text-xs">
-                      {p.actualCessionNo !== null ? `#${p.actualCessionNo}` : '-'}
+                      {p.actualCessionNo !== null ? p.actualCessionNo : '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-slate-900 text-xs">
                       {interval}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="font-medium text-slate-900">{p.policyHolderName || 'N/A'}</div>
-                      <div className="text-xs text-slate-500">ID: {p.customerId || 'N/A'}</div>
-                      <div className="text-xs text-slate-500">Pol: {p.policyNumber || 'N/A'}</div>
+                    <td className="px-6 py-4 whitespace-nowrap font-medium text-slate-900">
+                      {p.policyHolderName || 'N/A'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-slate-900">{p.treatyName}</div>
-                      <div className="text-xs text-slate-500">{p.subTreatyName || p.riskCoverage}</div>
-                      {(p.planName || p.planCode) && (
-                        <div className="text-xs text-blue-600 mt-0.5" title="Plan">
-                          {p.planName} {p.planCode ? `(${p.planCode})` : ''}
-                        </div>
-                      )}
+                    <td className="px-6 py-4 whitespace-nowrap text-slate-500">
+                      {p.customerId || 'N/A'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-slate-500">
+                      {p.policyNumber || 'N/A'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-slate-900">
+                      {p.treatyName}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-slate-500">
+                      {p.subTreatyName || p.riskCoverage}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-slate-500">
+                      {(p.planName || p.planCode) ? `${p.planName || ''} ${p.planCode ? `(${p.planCode})` : ''}` : 'N/A'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right font-mono text-slate-900">
+                       {formatCurrency(parseFloat(p.sumAssured))}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right font-mono text-emerald-600">
+                       {formatCurrency(p.sumCeded)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center">
                       <div className="flex justify-center gap-2">
@@ -248,42 +266,35 @@ export default function CessionsView({
         <div className="p-6">
           {selectedCessionForTransactions ? (
              <div className="space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                  <div>
-                    <h4 className="font-semibold text-slate-900">{selectedCessionForTransactions.policyHolderName}</h4>
-                    <p className="text-sm text-slate-500">Policy: {selectedCessionForTransactions.policyNumber}</p>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-sm font-mono text-emerald-600">{formatCurrency(selectedCessionForTransactions.sumCeded)} Ceded</div>
-                    <div className="text-xs font-mono text-slate-500">{processIntervals.find(inv => inv.id === selectedCessionForTransactions.processIntervalId)?.description || 'N/A'}</div>
-                  </div>
-                </div>
-                
-                <h5 className="text-sm font-semibold text-slate-700">Transaction History</h5>
+                <h5 className="text-sm font-semibold text-slate-700 mb-2">Transaction History</h5>
                 {selectedCessionForTransactions.transactions && selectedCessionForTransactions.transactions.length > 0 ? (
-                  <div className="border border-slate-200 rounded-md overflow-hidden">
+                  <div className="border border-slate-200 rounded-md overflow-x-auto max-h-[400px] overflow-y-auto">
                     <table className="min-w-full divide-y divide-slate-200 text-sm">
-                       <thead className="bg-slate-50">
+                       <thead className="bg-slate-50 sticky top-0 z-10">
                          <tr>
-                            <th className="px-4 py-2 text-left font-medium text-slate-500">TRID</th>
-                            <th className="px-4 py-2 text-left font-medium text-slate-500">Process Interval</th>
-                            <th className="px-4 py-2 text-left font-medium text-slate-500">CalcFrom</th>
-                            <th className="px-4 py-2 text-left font-medium text-slate-500">CalcTo</th>
-                            <th className="px-4 py-2 text-left font-medium text-slate-500">ReinsurerID</th>
-                            <th className="px-4 py-2 text-right font-medium text-slate-500">SumCeded</th>
-                            <th className="px-4 py-2 text-right font-medium text-slate-500">PremiumAmount</th>
+                            <th className="px-4 py-2 text-left font-medium text-slate-500 whitespace-nowrap">BatchID</th>
+                            <th className="px-4 py-2 text-left font-medium text-slate-500 whitespace-nowrap">TRID</th>
+                            <th className="px-4 py-2 text-left font-medium text-slate-500 whitespace-nowrap">Process Interval</th>
+                            <th className="px-4 py-2 text-left font-medium text-slate-500 whitespace-nowrap">CalcFrom</th>
+                            <th className="px-4 py-2 text-left font-medium text-slate-500 whitespace-nowrap">CalcTo</th>
+                            <th className="px-4 py-2 text-left font-medium text-slate-500 whitespace-nowrap">ReinsurerID</th>
+                            <th className="px-4 py-2 text-right font-medium text-slate-500 whitespace-nowrap">SumAtRisk</th>
+                            <th className="px-4 py-2 text-right font-medium text-slate-500 whitespace-nowrap">SumCeded</th>
+                            <th className="px-4 py-2 text-right font-medium text-slate-500 whitespace-nowrap">PremiumAmount</th>
                          </tr>
                        </thead>
                        <tbody className="bg-white divide-y divide-slate-100">
                           {selectedCessionForTransactions.transactions.map((tx, i) => (
-                             <tr key={i}>
-                               <td className="px-4 py-3 text-slate-500 font-mono text-xs truncate max-w-[100px]">{tx.id.substring(0, 8)}...</td>
-                               <td className="px-4 py-3 text-slate-500 text-xs">{processIntervals.find(inv => inv.id === tx.processIntervalId)?.description || 'N/A'}</td>
-                               <td className="px-4 py-3 text-slate-500">{tx.calcFrom}</td>
-                               <td className="px-4 py-3 text-slate-500">{tx.calcTo}</td>
-                               <td className="px-4 py-3 text-slate-900 font-medium">{tx.reinsurerName}</td>
-                               <td className="px-4 py-3 text-right font-mono text-slate-500">{formatCurrency(tx.sumCeded)}</td>
-                               <td className="px-4 py-3 text-right font-mono font-medium text-slate-900">{formatCurrency(tx.premiumAmount)}</td>
+                             <tr key={i} className="hover:bg-slate-50">
+                               <td className="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">{tx.batchId || 'N/A'}</td>
+                               <td className="px-4 py-3 text-slate-500 font-mono text-xs whitespace-nowrap">{tx.trid || tx.id.substring(0,8)}</td>
+                               <td className="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">{processIntervals.find(inv => inv.id === tx.processIntervalId)?.name || 'N/A'}</td>
+                               <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{tx.calcFrom}</td>
+                               <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{tx.calcTo}</td>
+                               <td className="px-4 py-3 text-slate-900 font-medium whitespace-nowrap">{tx.reinsurerName}</td>
+                               <td className="px-4 py-3 text-slate-500 font-mono text-right whitespace-nowrap">{formatCurrency(selectedCessionForTransactions.sumAtRisk)}</td>
+                               <td className="px-4 py-3 text-emerald-600 font-mono text-right whitespace-nowrap">{formatCurrency(tx.sumCeded)}</td>
+                               <td className="px-4 py-3 text-blue-600 font-bold font-mono text-right whitespace-nowrap">{formatCurrency(tx.premiumAmount)}</td>
                              </tr>
                           ))}
                        </tbody>
@@ -346,40 +357,6 @@ export default function CessionsView({
                   </dl>
                 </div>
                 
-                <div>
-                  <h4 className="text-sm font-semibold text-slate-900 border-b border-slate-200 pb-2 mb-4">Calculated Cession Data</h4>
-                  <dl className="space-y-3 text-sm">
-                    <div className="grid grid-cols-2"><dt className="text-slate-500">Sum At Risk</dt><dd className="font-medium text-slate-900">{formatCurrency(viewPolicy.sumAtRisk)}</dd></div>
-                    <div className="grid grid-cols-2"><dt className="text-slate-500">Sum Ceded</dt><dd className="font-medium text-slate-900">{formatCurrency(viewPolicy.sumCeded)}</dd></div>
-                    <div className="grid grid-cols-2 bg-blue-50/50 p-2 rounded-md -mx-2"><dt className="text-blue-700 font-medium">Reinsurance Premium</dt><dd className="font-bold text-blue-700">{viewPolicy.premiumAmount !== null ? formatCurrency(viewPolicy.premiumAmount) : 'N/A'}</dd></div>
-                  </dl>
-                </div>
-
-                {viewPolicy.reinsurerSplits && viewPolicy.reinsurerSplits.length > 0 && (
-                  <div className="md:col-span-2">
-                    <h4 className="text-sm font-semibold text-slate-900 border-b border-slate-200 pb-2 mb-4">Reinsurer Premium Distribution</h4>
-                    <div className="bg-white border text-sm border-slate-200 rounded overflow-hidden">
-                      <table className="min-w-full divide-y divide-slate-200">
-                        <thead className="bg-slate-100/50">
-                          <tr>
-                            <th className="px-4 py-2 text-left font-medium text-slate-500">Reinsurer</th>
-                            <th className="px-4 py-2 text-right font-medium text-slate-500">Share %</th>
-                            <th className="px-4 py-2 text-right font-medium text-slate-500">Premium Amount</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 font-mono">
-                          {viewPolicy.reinsurerSplits.map((r, i) => (
-                            <tr key={i}>
-                              <td className="px-4 py-2 text-slate-700 font-sans">{r.name}</td>
-                              <td className="px-4 py-2 text-right text-slate-700">{r.sharePercentage.toFixed(2)}%</td>
-                              <td className="px-4 py-2 text-right font-medium text-emerald-600">{formatCurrency(r.premiumAmount)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
             

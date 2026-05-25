@@ -1,15 +1,19 @@
 import React, { useState, useMemo } from 'react';
-import { SavedPolicy, CedingCompanyConfig } from '../types';
+import { SavedPolicy, CedingCompanyConfig, ProcessInterval, Treaty } from '../types';
 import { Search, Eye, X, CheckCircle, XCircle } from 'lucide-react';
 
 export default function FacultativeView({
   savedPolicies,
   setSavedPolicies,
-  companyConfig
+  companyConfig,
+  processIntervals,
+  treaties
 }: {
   savedPolicies: SavedPolicy[];
   setSavedPolicies: React.Dispatch<React.SetStateAction<SavedPolicy[]>>;
   companyConfig: CedingCompanyConfig;
+  processIntervals: ProcessInterval[];
+  treaties: Treaty[];
 }) {
   const [searchField, setSearchField] = useState<'policyNumber' | 'customerId'>('policyNumber');
   const [searchValue, setSearchValue] = useState('');
@@ -39,13 +43,76 @@ export default function FacultativeView({
     }).format(amount);
   };
 
+  const generateBatchId = () => {
+    const now = new Date();
+    return `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
+  };
+
   const handleAccept = (policy: SavedPolicy) => {
+    let currentMaxTrid = Math.max(0, ...savedPolicies.flatMap(p => (p.transactions || []).map(t => t.trid || 0)));
+    const runBatchId = generateBatchId();
     const maxCessionNo = Math.max(...savedPolicies.map(p => p.actualCessionNo || 0), 0);
+    const newTransactions: any[] = [];
+    
+    const treaty = treaties.find(t => t.name.toLowerCase() === policy.treatyName?.toLowerCase());
+    const subTreaty = treaty?.subTreaties?.find(st => st.name.toLowerCase() === policy.subTreatyName?.toLowerCase());
+
+    const processInterval = processIntervals.find(inv => inv.id === policy.processIntervalId);
+
+    console.log("Facultative Accept - Policy:", policy.policyNumber, "processInterval:", processInterval?.id, "subTreaty:", subTreaty?.name);
+
+    if (processInterval && subTreaty && policy.dateOfCommencement) {
+        const docDate = new Date(policy.dateOfCommencement);
+        const freq = subTreaty.reinsurerPaymentFrequency || 1;
+        const monthsToAdd = 12 / freq;
+
+        let nextCalcFrom = new Date(docDate);
+        let loopCounter = 0;
+        
+        while (nextCalcFrom.toISOString().split('T')[0] <= processInterval.endDate && loopCounter < 1000) {
+           const calcFromStr = nextCalcFrom.toISOString().split('T')[0];
+           
+           const nextCalcTo = new Date(nextCalcFrom);
+           nextCalcTo.setMonth(nextCalcTo.getMonth() + monthsToAdd);
+           nextCalcTo.setDate(nextCalcTo.getDate() - 1);
+           const calcToStr = nextCalcTo.toISOString().split('T')[0];
+           
+           console.log("Loop evaluating calcFromStr:", calcFromStr, "against interval:", processInterval.startDate, "to", processInterval.endDate);
+
+           if (calcFromStr >= processInterval.startDate && calcFromStr <= processInterval.endDate) {
+               if (policy.sumCeded > 0) {
+                   console.log("Generating transaction for:", calcFromStr);
+                   subTreaty.reinsurers?.forEach(r => {
+                       currentMaxTrid++;
+                       newTransactions.push({
+                         id: crypto.randomUUID(),
+                         trid: currentMaxTrid,
+                         batchId: runBatchId,
+                         calcFrom: calcFromStr,
+                         calcTo: calcToStr,
+                         reinsurerId: r.name,
+                         reinsurerName: r.name,
+                         sumCeded: policy.sumCeded * (r.sharePercentage / 100),
+                         premiumAmount: (policy.premiumAmount || 0) * (r.sharePercentage / 100),
+                         processIntervalId: policy.processIntervalId
+                       });
+                   });
+               }
+           }
+           
+           nextCalcFrom.setMonth(nextCalcFrom.getMonth() + monthsToAdd);
+           loopCounter++;
+        }
+    }
+
+    console.log("Generated Transactions count:", newTransactions.length);
+
     setSavedPolicies(prev => prev.map(p => 
       p.id === policy.id ? { 
         ...p, 
         cessionStatus: 'Accepted', 
-        actualCessionNo: p.sumCeded > 0 ? maxCessionNo + 1 : null 
+        actualCessionNo: p.sumCeded > 0 ? maxCessionNo + 1 : null,
+        transactions: (p.transactions || []).concat(newTransactions)
       } : p
     ));
   };
@@ -90,47 +157,55 @@ export default function FacultativeView({
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto h-[400px] overflow-y-auto">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-white border-b border-slate-200">
+            <thead className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
               <tr>
-                <th scope="col" className="px-6 py-3 text-left font-semibold text-slate-500 uppercase tracking-wider">Customer / Policy</th>
-                <th scope="col" className="px-6 py-3 text-left font-semibold text-slate-500 uppercase tracking-wider">Treaty / Coverage</th>
-                <th scope="col" className="px-6 py-3 text-left font-semibold text-slate-500 uppercase tracking-wider">Status</th>
-                <th scope="col" className="px-6 py-3 text-right font-semibold text-slate-500 uppercase tracking-wider">Sum Assured</th>
-                <th scope="col" className="px-6 py-3 text-right font-semibold text-slate-500 uppercase tracking-wider">Sum Ceded</th>
-                <th scope="col" className="px-6 py-3 text-center font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
+                <th scope="col" className="px-6 py-3 text-left font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Customer Name</th>
+                <th scope="col" className="px-6 py-3 text-left font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Customer ID</th>
+                <th scope="col" className="px-6 py-3 text-left font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Policy No</th>
+                <th scope="col" className="px-6 py-3 text-left font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Treaty</th>
+                <th scope="col" className="px-6 py-3 text-left font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Coverage</th>
+                <th scope="col" className="px-6 py-3 text-left font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Plan Name</th>
+                <th scope="col" className="px-6 py-3 text-left font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Status</th>
+                <th scope="col" className="px-6 py-3 text-right font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Sum Assured</th>
+                <th scope="col" className="px-6 py-3 text-right font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Sum Ceded</th>
+                <th scope="col" className="px-6 py-3 text-center font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-slate-200">
               {filteredPolicies.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                  <td colSpan={10} className="px-6 py-12 text-center text-slate-500">
                     No pending facultative submissions found.
                   </td>
                 </tr>
               ) : (
                 filteredPolicies.map((p) => (
                   <tr key={p.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="font-medium text-slate-900">{p.policyHolderName || 'N/A'}</div>
-                      <div className="text-xs text-slate-500">ID: {p.customerId || 'N/A'}</div>
-                      <div className="text-xs text-slate-500">Pol: {p.policyNumber || 'N/A'}</div>
+                    <td className="px-6 py-4 whitespace-nowrap font-medium text-slate-900">
+                      {p.policyHolderName || 'N/A'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-slate-500">
+                      {p.customerId || 'N/A'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-slate-500">
+                      {p.policyNumber || 'N/A'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-slate-900">
+                      {p.treatyName}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-slate-500">
+                      {p.riskCoverage}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-slate-500">
+                      {(p.planName || p.planCode) ? `${p.planName || ''} ${p.planCode ? `(${p.planCode})` : ''}` : 'N/A'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-slate-900">{p.treatyName}</div>
-                      <div className="text-xs text-slate-500">{p.riskCoverage}</div>
-                      {(p.planName || p.planCode) && (
-                        <div className="text-xs text-blue-600 mt-0.5" title="Plan">
-                          {p.planName} {p.planCode ? `(${p.planCode})` : ''}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        p.cessionStatus === 'Accepted' ? 'bg-emerald-100 text-emerald-800' :
-                        p.cessionStatus === 'Declined' ? 'bg-red-100 text-red-800' :
-                        'bg-amber-100 text-amber-800'
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${
+                        p.cessionStatus === 'Accepted' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                        p.cessionStatus === 'Declined' ? 'bg-red-50 text-red-700 border-red-200' :
+                        'bg-amber-50 text-amber-700 border-amber-200'
                       }`}>
                         {p.cessionStatus}
                       </span>
