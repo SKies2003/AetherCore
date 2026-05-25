@@ -1,19 +1,21 @@
 import React, { useState, useMemo } from 'react';
-import { SavedPolicy } from '../types';
+import { SavedPolicy, CedingCompanyConfig } from '../types';
 import { Search, Eye, X, CheckCircle, XCircle } from 'lucide-react';
 
 export default function FacultativeView({
   savedPolicies,
-  setSavedPolicies
+  setSavedPolicies,
+  companyConfig
 }: {
   savedPolicies: SavedPolicy[];
   setSavedPolicies: React.Dispatch<React.SetStateAction<SavedPolicy[]>>;
+  companyConfig: CedingCompanyConfig;
 }) {
   const [searchField, setSearchField] = useState<'policyNumber' | 'customerId'>('policyNumber');
   const [searchValue, setSearchValue] = useState('');
   const [viewPolicy, setViewPolicy] = useState<SavedPolicy | null>(null);
 
-  const facultativePolicies = useMemo(() => savedPolicies.filter(p => p.cessionStatus === 'Facultative Pending' || p.cessionStatus === 'Accepted' || p.cessionStatus === 'Declined'), [savedPolicies]);
+  const facultativePolicies = useMemo(() => savedPolicies.filter(p => (p.cessionStatus === 'Facultative Pending' || p.cessionStatus === 'Accepted' || p.cessionStatus === 'Declined') && (!p.lineOfBusiness || p.lineOfBusiness === companyConfig.lineOfBusiness)), [savedPolicies, companyConfig]);
 
   const filteredPolicies = useMemo(() => {
     if (!searchValue.trim()) return facultativePolicies;

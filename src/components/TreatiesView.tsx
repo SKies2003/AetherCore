@@ -44,6 +44,8 @@ export default function TreatiesView({
     setCurrentSubTreaty({
       id: crypto.randomUUID(),
       name: `${name ? name + '-' : 'Sub-Treaty '}${subTreaties.length + 1}`,
+      startDate: startDate,
+      endDate: endDate,
       retentionType: 'absolute',
       retentionValue: 0,
       facultativeLimit: 0,
@@ -206,12 +208,63 @@ export default function TreatiesView({
     setExpandedId(expandedId === id ? null : id);
   };
 
+  const today = new Date().toISOString().split('T')[0];
+
+  const handleExportTreaties = () => {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(treaties, null, 2));
+    const downloadAnchorNode = document.createElement('a');
+    downloadAnchorNode.setAttribute("href", dataStr);
+    downloadAnchorNode.setAttribute("download", `treaties_${new Date().toISOString().split('T')[0]}.json`);
+    document.body.appendChild(downloadAnchorNode);
+    downloadAnchorNode.click();
+    downloadAnchorNode.remove();
+  };
+
+  const handleImportTreaties = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const json = JSON.parse(event.target?.result as string);
+        if (Array.isArray(json)) {
+          onAddTreaty(json as Treaty[]);
+        } else {
+          throw new Error('Invalid format');
+        }
+      } catch (err) {
+        alert("Invalid treaties JSON file.");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-start">
         <div>
           <h2 className="text-xl font-semibold text-slate-900">Treaties</h2>
           <p className="text-sm text-slate-500 mt-1">Configure treaties and subtreaties.</p>
+        </div>
+        <div className="flex bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden text-sm">
+          <button
+            onClick={handleExportTreaties}
+            className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 transition-colors text-slate-600 font-medium border-r border-slate-200"
+            title="Export Treaties as JSON"
+          >
+            <Download className="w-4 h-4" /> Export
+          </button>
+          <label className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 transition-colors text-slate-600 cursor-pointer font-medium">
+            <Upload className="w-4 h-4" /> Import
+            <input
+              type="file"
+              accept=".json"
+              className="hidden"
+              onChange={handleImportTreaties}
+            />
+          </label>
         </div>
       </div>
 
@@ -237,6 +290,7 @@ export default function TreatiesView({
               <input
                 type="date"
                 value={startDate}
+                max={today}
                 onChange={(e) => setStartDate(e.target.value)}
                 className="block w-full rounded-md border-slate-300 py-1.5 px-3 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border transition-all"
                 required
@@ -247,6 +301,7 @@ export default function TreatiesView({
               <input
                 type="date"
                 value={endDate}
+                min={today}
                 onChange={(e) => setEndDate(e.target.value)}
                 className="block w-full rounded-md border-slate-300 py-1.5 px-3 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border transition-all"
                 required
@@ -260,7 +315,10 @@ export default function TreatiesView({
               <button
                 type="button"
                 onClick={openAddSubTreatyModal}
-                className="flex items-center gap-2 bg-slate-100 text-slate-700 px-3 py-1.5 rounded-md hover:bg-slate-200 transition-colors font-medium text-sm shadow-sm"
+                disabled={!name || !startDate || !endDate}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors font-medium text-sm shadow-sm ${
+                  (!name || !startDate || !endDate) ? 'bg-slate-50 text-slate-400 cursor-not-allowed border border-slate-200' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
               >
                 <Plus className="w-4 h-4" /> Add Sub-Treaty
               </button>
@@ -440,11 +498,11 @@ export default function TreatiesView({
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
                     <div>
                       <label className="block text-slate-700 font-medium mb-1">Start Date</label>
-                      <input type="date" value={currentSubTreaty.startDate || ''} onChange={e => updateCurrentSubTreaty('startDate', e.target.value)} className="w-full border-slate-300 rounded px-2 py-1.5 border focus:ring-blue-500 focus:border-blue-500 bg-white" />
+                      <input type="date" max={today} value={currentSubTreaty.startDate || ''} onChange={e => updateCurrentSubTreaty('startDate', e.target.value)} className="w-full border-slate-300 rounded px-2 py-1.5 border focus:ring-blue-500 focus:border-blue-500 bg-white" />
                     </div>
                     <div>
                       <label className="block text-slate-700 font-medium mb-1">End Date</label>
-                      <input type="date" value={currentSubTreaty.endDate || ''} onChange={e => updateCurrentSubTreaty('endDate', e.target.value)} className="w-full border-slate-300 rounded px-2 py-1.5 border focus:ring-blue-500 focus:border-blue-500 bg-white" />
+                      <input type="date" min={today} value={currentSubTreaty.endDate || ''} onChange={e => updateCurrentSubTreaty('endDate', e.target.value)} className="w-full border-slate-300 rounded px-2 py-1.5 border focus:ring-blue-500 focus:border-blue-500 bg-white" />
                     </div>
                   </div>
                 </div>
@@ -501,6 +559,7 @@ export default function TreatiesView({
                                 >
                                   <option value="">Select...</option>
                                   <option value="Medical">Medical</option>
+                                  <option value="Tele-Medical">Tele-Medical</option>
                                   <option value="Non-Medical">Non-Medical</option>
                                 </select>
                               ) : rule.ruleItem.toLowerCase() === 'smoker' ? (

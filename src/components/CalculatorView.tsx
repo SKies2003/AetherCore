@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Treaty, PaymentFrequency, Gender, MasterConfig, SavedPolicy, Plan, SubTreaty, ReserveTableEntry } from '../types';
+import { Treaty, PaymentFrequency, Gender, MasterConfig, SavedPolicy, Plan, SubTreaty, ReserveTableEntry, CedingCompanyConfig, ProcessInterval, ProcessYear } from '../types';
 import { calculateSumCeded, calculatePremiumAmount } from '../lib/calculator';
 import { Calculator, AlertCircle, RefreshCw, Download, Upload, Save, Trash2, FileSpreadsheet } from 'lucide-react';
 
@@ -9,7 +9,10 @@ export default function CalculatorView({
   plans,
   savedPolicies, 
   setSavedPolicies,
-  reserveTables = []
+  reserveTables = [],
+  companyConfig,
+  processIntervals,
+  processYears
 }: { 
   treaties: Treaty[];
   masterConfig: MasterConfig;
@@ -17,7 +20,13 @@ export default function CalculatorView({
   savedPolicies: SavedPolicy[];
   setSavedPolicies: React.Dispatch<React.SetStateAction<SavedPolicy[]>>;
   reserveTables?: ReserveTableEntry[];
+  companyConfig: CedingCompanyConfig;
+  processIntervals: ProcessInterval[];
+  processYears: ProcessYear[];
 }) {
+  // Process Interval Selection
+  const [selectedIntervalId, setSelectedIntervalId] = useState<string>('');
+
   // Policy Holder Details
   const [customerId, setCustomerId] = useState<string>('');
   const [policyNumber, setPolicyNumber] = useState<string>('');
@@ -95,31 +104,31 @@ export default function CalculatorView({
                const item = r.ruleItem.toLowerCase();
                
                     if (item === 'sa') {
-                      const numSA = parseFloat(sumAssured) || 0;
+                      const numSA = parseFloat(sumAssured.replace(/,/g, '')) || 0;
                       if (val.includes('*')) {
                         const parts = val.split('*');
-                        const min = parseFloat(parts[0]);
-                        const max = parseFloat(parts[1]);
+                        const min = parseFloat(parts[0].replace(/,/g, ''));
+                        const max = parseFloat(parts[1].replace(/,/g, ''));
                         if (!(numSA >= min && numSA <= max)) ruleMatch = false;
                       }
-                      else if (val.startsWith('>=')) { if (!(numSA >= parseFloat(val.substring(2)))) ruleMatch = false; }
-                      else if (val.startsWith('<=')) { if (!(numSA <= parseFloat(val.substring(2)))) ruleMatch = false; }
-                      else if (val.startsWith('>')) { if (!(numSA > parseFloat(val.substring(1)))) ruleMatch = false; }
-                      else if (val.startsWith('<')) { if (!(numSA < parseFloat(val.substring(1)))) ruleMatch = false; }
-                      else if (numSA.toString() !== val && val !== '') ruleMatch = false;
+                      else if (val.startsWith('>=')) { if (!(numSA >= parseFloat(val.substring(2).replace(/,/g, '')))) ruleMatch = false; }
+                      else if (val.startsWith('<=')) { if (!(numSA <= parseFloat(val.substring(2).replace(/,/g, '')))) ruleMatch = false; }
+                      else if (val.startsWith('>')) { if (!(numSA > parseFloat(val.substring(1).replace(/,/g, '')))) ruleMatch = false; }
+                      else if (val.startsWith('<')) { if (!(numSA < parseFloat(val.substring(1).replace(/,/g, '')))) ruleMatch = false; }
+                      else if (numSA.toString() !== val.replace(/,/g, '') && val !== '') ruleMatch = false;
                     } else if (item === 'emr') {
-                      const numEMR = parseFloat(emrPercentage) || 0;
+                      const numEMR = parseFloat(emrPercentage.replace(/,/g, '')) || 0;
                       if (val.includes('*')) {
                         const parts = val.split('*');
-                        const min = parseFloat(parts[0]);
-                        const max = parseFloat(parts[1]);
+                        const min = parseFloat(parts[0].replace(/,/g, ''));
+                        const max = parseFloat(parts[1].replace(/,/g, ''));
                         if (!(numEMR >= min && numEMR <= max)) ruleMatch = false;
                       }
-                      else if (val.startsWith('>=')) { if (!(numEMR >= parseFloat(val.substring(2)))) ruleMatch = false; }
-                      else if (val.startsWith('<=')) { if (!(numEMR <= parseFloat(val.substring(2)))) ruleMatch = false; }
-                      else if (val.startsWith('>')) { if (!(numEMR > parseFloat(val.substring(1)))) ruleMatch = false; }
-                      else if (val.startsWith('<')) { if (!(numEMR < parseFloat(val.substring(1)))) ruleMatch = false; }
-                      else if (numEMR.toString() !== val && val !== '') ruleMatch = false;
+                      else if (val.startsWith('>=')) { if (!(numEMR >= parseFloat(val.substring(2).replace(/,/g, '')))) ruleMatch = false; }
+                      else if (val.startsWith('<=')) { if (!(numEMR <= parseFloat(val.substring(2).replace(/,/g, '')))) ruleMatch = false; }
+                      else if (val.startsWith('>')) { if (!(numEMR > parseFloat(val.substring(1).replace(/,/g, '')))) ruleMatch = false; }
+                      else if (val.startsWith('<')) { if (!(numEMR < parseFloat(val.substring(1).replace(/,/g, '')))) ruleMatch = false; }
+                      else if (numEMR.toString() !== val.replace(/,/g, '') && val !== '') ruleMatch = false;
                     } else if (item === 'medical') {
                  if (medical.toLowerCase() !== val && val !== '') ruleMatch = false;
                } else if (item === 'smoker') {
@@ -222,6 +231,22 @@ export default function CalculatorView({
   };
 
   const handleSavePolicy = () => {
+    if (!selectedIntervalId) {
+      alert("Please select a Process Interval before saving.");
+      return;
+    }
+
+    const processInterval = processIntervals.find(inv => inv.id === selectedIntervalId);
+    if (!processInterval) {
+      alert("Invalid process interval.");
+      return;
+    }
+
+    if (dateOfCommencement < processInterval.startDate || dateOfCommencement > processInterval.endDate) {
+      alert(`Date of Commencement (${dateOfCommencement}) does not fall within the selected process interval (${processInterval.startDate} to ${processInterval.endDate}). Cession will not be created.`);
+      return;
+    }
+
     if (!activeTreatyInfo) {
       alert("Please select a treaty before saving.");
       return;
@@ -250,10 +275,31 @@ export default function CalculatorView({
        pendingFacultative = parseFloat(sumAssured) > subTreaty.facultativeLimit;
     }
 
+    const calcFromDate = new Date(dateOfCommencement);
+    const monthsToAdd = 12 / (subTreaty.reinsurerPaymentFrequency || 1);
+    const calcToDate = new Date(calcFromDate);
+    calcToDate.setMonth(calcToDate.getMonth() + monthsToAdd);
+    calcToDate.setDate(calcToDate.getDate() - 1);
+    
+    const calcFrom = calcFromDate.toISOString().split('T')[0];
+    const calcTo = calcToDate.toISOString().split('T')[0];
+
+    const transactions = (c_sumCeded > 0 && !pendingFacultative) ? (subTreaty.reinsurers || []).map(r => ({
+      id: crypto.randomUUID(),
+      calcFrom,
+      calcTo,
+      reinsurerId: r.name,
+      reinsurerName: r.name,
+      sumCeded: c_sumCeded * (r.sharePercentage / 100),
+      premiumAmount: (premiumAmount || 0) * (r.sharePercentage / 100),
+      processIntervalId: selectedIntervalId
+    })) : [];
+
     const newDoc: SavedPolicy = {
       id: crypto.randomUUID(),
       cessionStatus: pendingFacultative ? 'Facultative Pending' : (c_sumCeded > 0 ? 'Ceded' : undefined),
       actualCessionNo: (c_sumCeded > 0 && !pendingFacultative) ? (Math.max(...savedPolicies.map(p => p.actualCessionNo || 0), 0) + 1) : null,
+      processIntervalId: selectedIntervalId,
       customerId,
       policyNumber,
       policyHolderName,
@@ -269,7 +315,9 @@ export default function CalculatorView({
       medical,
       impairment,
       
+      selectedTreatyId: treaty.id,
       treatyName: treaty.name,
+      subTreatyName: subTreaty.name,
       grossReserves,
 
       emrPercentage,
@@ -288,7 +336,9 @@ export default function CalculatorView({
         name: r.name,
         sharePercentage: r.sharePercentage,
         premiumAmount: premiumAmount * (r.sharePercentage / 100)
-      })) : []
+      })) : [],
+      lineOfBusiness: companyConfig.lineOfBusiness,
+      transactions
     };
 
     setSavedPolicies(prev => [...prev, newDoc]);
@@ -347,6 +397,12 @@ export default function CalculatorView({
   };
 
   const handleImportPolicies = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!selectedIntervalId) {
+      alert("Please select a Process Interval before importing.");
+      e.target.value = '';
+      return;
+    }
+
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -442,6 +498,12 @@ export default function CalculatorView({
 
             const importedDoc = parseAndFormatDate(importedDocRaw);
             const importedDob = parseAndFormatDate(importedDobRaw);
+
+            const processInterval = processIntervals.find(inv => inv.id === selectedIntervalId);
+            if (processInterval && (importedDoc < processInterval.startDate || importedDoc > processInterval.endDate)) {
+              console.log(`Skipping policy ${importedPolicy} because DOC ${importedDoc} is outside the selected interval.`);
+              continue;
+            }
 
             const isDuplicate = savedPolicies.some(p => 
               p.customerId.toLowerCase() === importedCustomer.toLowerCase() &&
@@ -541,31 +603,31 @@ export default function CalculatorView({
                      const item = r.ruleItem.toLowerCase();
                      
                     if (item === 'sa') {
-                      const numSA = parseFloat(importedSum) || 0;
+                      const numSA = parseFloat(importedSum.replace(/,/g, '')) || 0;
                       if (val.includes('*')) {
                         const parts = val.split('*');
-                        const min = parseFloat(parts[0]);
-                        const max = parseFloat(parts[1]);
+                        const min = parseFloat(parts[0].replace(/,/g, ''));
+                        const max = parseFloat(parts[1].replace(/,/g, ''));
                         if (!(numSA >= min && numSA <= max)) ruleMatch = false;
                       }
-                      else if (val.startsWith('>=')) { if (!(numSA >= parseFloat(val.substring(2)))) ruleMatch = false; }
-                      else if (val.startsWith('<=')) { if (!(numSA <= parseFloat(val.substring(2)))) ruleMatch = false; }
-                      else if (val.startsWith('>')) { if (!(numSA > parseFloat(val.substring(1)))) ruleMatch = false; }
-                      else if (val.startsWith('<')) { if (!(numSA < parseFloat(val.substring(1)))) ruleMatch = false; }
-                      else if (numSA.toString() !== val && val !== '') ruleMatch = false;
+                      else if (val.startsWith('>=')) { if (!(numSA >= parseFloat(val.substring(2).replace(/,/g, '')))) ruleMatch = false; }
+                      else if (val.startsWith('<=')) { if (!(numSA <= parseFloat(val.substring(2).replace(/,/g, '')))) ruleMatch = false; }
+                      else if (val.startsWith('>')) { if (!(numSA > parseFloat(val.substring(1).replace(/,/g, '')))) ruleMatch = false; }
+                      else if (val.startsWith('<')) { if (!(numSA < parseFloat(val.substring(1).replace(/,/g, '')))) ruleMatch = false; }
+                      else if (numSA.toString() !== val.replace(/,/g, '') && val !== '') ruleMatch = false;
                     } else if (item === 'emr') {
-                      const numEMR = parseFloat(importedEmr) || 0;
+                      const numEMR = parseFloat(importedEmr.replace(/,/g, '')) || 0;
                       if (val.includes('*')) {
                         const parts = val.split('*');
-                        const min = parseFloat(parts[0]);
-                        const max = parseFloat(parts[1]);
+                        const min = parseFloat(parts[0].replace(/,/g, ''));
+                        const max = parseFloat(parts[1].replace(/,/g, ''));
                         if (!(numEMR >= min && numEMR <= max)) ruleMatch = false;
                       }
-                      else if (val.startsWith('>=')) { if (!(numEMR >= parseFloat(val.substring(2)))) ruleMatch = false; }
-                      else if (val.startsWith('<=')) { if (!(numEMR <= parseFloat(val.substring(2)))) ruleMatch = false; }
-                      else if (val.startsWith('>')) { if (!(numEMR > parseFloat(val.substring(1)))) ruleMatch = false; }
-                      else if (val.startsWith('<')) { if (!(numEMR < parseFloat(val.substring(1)))) ruleMatch = false; }
-                      else if (numEMR.toString() !== val && val !== '') ruleMatch = false;
+                      else if (val.startsWith('>=')) { if (!(numEMR >= parseFloat(val.substring(2).replace(/,/g, '')))) ruleMatch = false; }
+                      else if (val.startsWith('<=')) { if (!(numEMR <= parseFloat(val.substring(2).replace(/,/g, '')))) ruleMatch = false; }
+                      else if (val.startsWith('>')) { if (!(numEMR > parseFloat(val.substring(1).replace(/,/g, '')))) ruleMatch = false; }
+                      else if (val.startsWith('<')) { if (!(numEMR < parseFloat(val.substring(1).replace(/,/g, '')))) ruleMatch = false; }
+                      else if (numEMR.toString() !== val.replace(/,/g, '') && val !== '') ruleMatch = false;
                     } else if (item === 'medical') {
                        if (importedMedical.toLowerCase() !== val && val !== '') ruleMatch = false;
                      } else if (item === 'smoker') {
@@ -653,6 +715,25 @@ export default function CalculatorView({
               actualCessionNum = currentMaxCessionNo;
             }
 
+            const calcFromDate = new Date(importedDoc);
+            const monthsToAdd = 12 / (pSubTreaty?.reinsurerPaymentFrequency || 1);
+            const calcToDate = new Date(calcFromDate);
+            calcToDate.setMonth(calcToDate.getMonth() + monthsToAdd);
+            calcToDate.setDate(calcToDate.getDate() - 1);
+            const calcFrom = calcFromDate.toISOString().split('T')[0];
+            const calcTo = calcToDate.toISOString().split('T')[0];
+
+            const transactions = (c_sumCeded > 0 && !pendingFacultative && pSubTreaty) ? (pSubTreaty.reinsurers || []).map(r => ({
+              id: crypto.randomUUID(),
+              calcFrom,
+              calcTo,
+              reinsurerId: r.name,
+              reinsurerName: r.name,
+              sumCeded: c_sumCeded * (r.sharePercentage / 100),
+              premiumAmount: (c_premium || 0) * (r.sharePercentage / 100),
+              processIntervalId: selectedIntervalId
+            })) : [];
+
             newPolicies.push({
               id: crypto.randomUUID(),
               cessionStatus: pendingFacultative ? 'Facultative Pending' : (c_sumCeded > 0 ? 'Ceded' : undefined),
@@ -673,6 +754,7 @@ export default function CalculatorView({
               impairment: importedImpairment,
               selectedTreatyId: pTreaty ? pTreaty.id : '',
               treatyName: pTreaty ? pTreaty.name : 'Unknown Treaty',
+              subTreatyName: pSubTreaty ? pSubTreaty.name : '',
               grossReserves: importedGrossRes,
               emrPercentage: importedEmr,
               selectionDiscount: pSubTreaty ? (pSubTreaty.selectionDiscount || 0).toString() : '0',
@@ -689,7 +771,10 @@ export default function CalculatorView({
                 name: r.name,
                 sharePercentage: r.sharePercentage,
                 premiumAmount: c_premium! * (r.sharePercentage / 100)
-              })) : []
+              })) : [],
+              lineOfBusiness: companyConfig.lineOfBusiness,
+              processIntervalId: selectedIntervalId,
+              transactions
             });
           }
         }
@@ -726,8 +811,31 @@ export default function CalculatorView({
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        {/* ... existing code ... */}
         <div className="xl:col-span-2 space-y-6">
+          <div className="bg-white border border-slate-200 rounded-lg shadow-sm">
+            <div className="p-4 border-b border-slate-200 bg-slate-50/50">
+              <h3 className="text-sm font-semibold text-slate-800 uppercase tracking-wider">0. Process Interval Selection</h3>
+            </div>
+            <div className="p-5">
+              <label className="block text-sm font-medium text-slate-700 mb-1">Select Process Interval *</label>
+              <select
+                value={selectedIntervalId}
+                onChange={(e) => setSelectedIntervalId(e.target.value)}
+                className="block w-full max-w-sm rounded-md border-slate-300 py-1.5 px-3 text-slate-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border"
+              >
+                <option value="">Select an Interval...</option>
+                {processIntervals.map(inv => {
+                  const py = processYears.find(y => y.id === inv.processYearId);
+                  return (
+                    <option key={inv.id} value={inv.id}>
+                      {inv.description} ({inv.startDate} to {inv.endDate}) {py ? `[${py.description}]` : ''}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          </div>
+
           <div className="bg-white border border-slate-200 rounded-lg shadow-sm">
             <div className="p-4 border-b border-slate-200 bg-slate-50/50">
               <h3 className="text-sm font-semibold text-slate-800 uppercase tracking-wider">1. Policy Holder Details</h3>

@@ -1,25 +1,24 @@
 import React, { useState } from 'react';
 import { Calendar, Clock, Plus, Settings2 } from 'lucide-react';
+import { SavedPolicy, Treaty, CedingCompanyConfig, ProcessYear, ProcessInterval } from '../types';
 
-interface ProcessYear {
-  id: string;
-  startDate: string;
-  endDate: string;
-  description: string;
-}
-
-interface ProcessInterval {
-  id: string;
-  processYearId: string;
-  startDate: string;
-  endDate: string;
-  description: string;
-}
-
-export default function AccountsView() {
-  const [processYears, setProcessYears] = useState<ProcessYear[]>([]);
-  const [processIntervals, setProcessIntervals] = useState<ProcessInterval[]>([]);
-
+export default function AccountsView({ 
+  savedPolicies, 
+  treaties, 
+  companyConfig,
+  processYears,
+  setProcessYears,
+  processIntervals,
+  setProcessIntervals,
+}: { 
+  savedPolicies: SavedPolicy[];
+  treaties: Treaty[];
+  companyConfig: CedingCompanyConfig;
+  processYears: ProcessYear[];
+  setProcessYears: React.Dispatch<React.SetStateAction<ProcessYear[]>>;
+  processIntervals: ProcessInterval[];
+  setProcessIntervals: React.Dispatch<React.SetStateAction<ProcessInterval[]>>;
+}) {
   const [yearForm, setYearForm] = useState({ startDate: '', endDate: '', description: '' });
   const [intervalForm, setIntervalForm] = useState({ processYearId: '', startDate: '', endDate: '', description: '' });
 

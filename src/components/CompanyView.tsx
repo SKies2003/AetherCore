@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { CedingCompanyConfig, ReinsurerCompany, Treaty } from '../types';
-import { Building2, Save, Plus, Trash2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Building2, Save, Plus, Trash2, CheckCircle2, AlertCircle, Download, Upload } from 'lucide-react';
 
 interface CompanyViewProps {
   config: CedingCompanyConfig;
@@ -38,6 +38,39 @@ export default function CompanyView({ config, setConfig, treaties }: CompanyView
     // In a real app, this would persist to the backend
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 3000);
+  };
+
+  const handleExportCompany = () => {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(config, null, 2));
+    const downloadAnchorNode = document.createElement('a');
+    downloadAnchorNode.setAttribute("href", dataStr);
+    downloadAnchorNode.setAttribute("download", `company_config_${new Date().toISOString().split('T')[0]}.json`);
+    document.body.appendChild(downloadAnchorNode);
+    downloadAnchorNode.click();
+    downloadAnchorNode.remove();
+  };
+
+  const handleImportCompany = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const json = JSON.parse(event.target?.result as string);
+        if (json && typeof json === 'object' && 'name' in json) {
+          setConfig(json as CedingCompanyConfig);
+          setSaveSuccess(true);
+          setTimeout(() => setSaveSuccess(false), 3000);
+        } else {
+          throw new Error('Invalid format');
+        }
+      } catch (err) {
+        alert("Invalid company configuration JSON file.");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
   };
 
   const handleAddReinsurer = (e: React.FormEvent) => {
@@ -117,6 +150,24 @@ export default function CompanyView({ config, setConfig, treaties }: CompanyView
               Settings Saved
             </span>
           )}
+          <div className="flex bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden text-sm">
+            <button
+              onClick={handleExportCompany}
+              className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 transition-colors text-slate-600 font-medium border-r border-slate-200"
+              title="Export configuration as JSON"
+            >
+              <Download className="w-4 h-4" /> Export
+            </button>
+            <label className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 transition-colors text-slate-600 cursor-pointer font-medium">
+              <Upload className="w-4 h-4" /> Import
+              <input
+                type="file"
+                accept=".json"
+                className="hidden"
+                onChange={handleImportCompany}
+              />
+            </label>
+          </div>
           <button 
             onClick={handleSaveAll}
             className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition shadow-sm font-medium"

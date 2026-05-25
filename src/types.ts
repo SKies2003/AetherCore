@@ -6,6 +6,7 @@ export interface ReserveTableEntry {
   age: number;
   gender: string; // 'M', 'F', 'MF'
   premiumRate: number;
+  lineOfBusiness?: string;
 }
 
 export type RetentionType = 'absolute' | 'percentage';
@@ -96,11 +97,40 @@ export interface PolicyInput {
   policyholderPremiumFrequency: number;
 }
 
+export interface ProcessYear {
+  id: string;
+  startDate: string;
+  endDate: string;
+  description: string;
+}
+
+export interface ProcessInterval {
+  id: string;
+  processYearId: string;
+  startDate: string;
+  endDate: string;
+  description: string;
+}
+
+export interface CessionTransaction {
+  id: string;
+  calcFrom: string;
+  calcTo: string;
+  reinsurerId: string;
+  reinsurerName: string;
+  sumCeded: number;
+  premiumAmount: number;
+  processIntervalId?: string;
+}
+
 export interface SavedPolicy {
   id: string;
   actualCessionNo: number | null;
   customerId: string;
   policyNumber: string;
+  processIntervalId?: string;
+  transactions?: CessionTransaction[];
+
   policyHolderName: string;
   planCode?: string;
   planName?: string;
@@ -113,11 +143,13 @@ export interface SavedPolicy {
   smoker: string;
   medical: string;
   impairment: string;
+  lineOfBusiness?: string;
   
   cessionStatus?: 'Facultative Pending' | 'Accepted' | 'Declined' | 'Ceded' | 'No Cession';
   
   selectedTreatyId?: string; // made optional for backwards comp
   treatyName: string;
+  subTreatyName?: string;
   grossReserves: string;
 
   emrPercentage: string;
@@ -141,6 +173,7 @@ export interface Plan {
   planCode: string;
   riskCoverage: string;
   type: 'Base' | 'Rider';
+  lineOfBusiness?: string;
 }
 
 export interface ReinsurerCompany {

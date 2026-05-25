@@ -1,13 +1,15 @@
 import React, { useState, useMemo } from 'react';
 import { Download, Upload, Trash2, Search } from 'lucide-react';
-import { ReserveTableEntry } from '../types';
+import { ReserveTableEntry, CedingCompanyConfig } from '../types';
 
 export default function ReserveTablesView({ 
   reserveTables, 
-  setReserveTables 
+  setReserveTables,
+  companyConfig
 }: { 
   reserveTables: ReserveTableEntry[]; 
   setReserveTables: (tables: ReserveTableEntry[]) => void;
+  companyConfig: CedingCompanyConfig;
 }) {
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -29,7 +31,7 @@ export default function ReserveTablesView({
         }
 
         const map = new Map<string, ReserveTableEntry>();
-        reserveTables.forEach(t => map.set(`${t.premiumTableId}_${t.age}_${t.gender.toUpperCase()}`, t));
+        reserveTables.forEach(t => map.set(`${t.premiumTableId}_${t.age}_${t.gender.toUpperCase()}_${t.lineOfBusiness || ''}`, t));
 
         for (let i = startIndex; i < rows.length; i++) {
           const cols = rows[i].split('\t'); // assuming tab separated, like pasted from excel
@@ -44,13 +46,14 @@ export default function ReserveTablesView({
             continue; // basic validation
           }
 
-          const key = `${premiumTableId}_${age}_${gender}`;
+          const key = `${premiumTableId}_${age}_${gender}_${companyConfig.lineOfBusiness}`;
           map.set(key, {
             id: crypto.randomUUID(),
             premiumTableId,
             age,
             gender,
-            premiumRate
+            premiumRate,
+            lineOfBusiness: companyConfig.lineOfBusiness
           });
         }
 
@@ -66,7 +69,8 @@ export default function ReserveTablesView({
 
   const handleExport = () => {
     let csv = 'Age\tPremium Table Id\tGender\tPremium Rate\n';
-    reserveTables.forEach(entry => {
+    const toExport = reserveTables.filter(t => !t.lineOfBusiness || t.lineOfBusiness === companyConfig.lineOfBusiness);
+    toExport.forEach(entry => {
       csv += `${entry.age}\t${entry.premiumTableId}\t${entry.gender}\t${entry.premiumRate}\n`;
     });
 
@@ -84,7 +88,7 @@ export default function ReserveTablesView({
   };
   
   const filteredAndSortedEntries = useMemo(() => {
-    let result = [...reserveTables];
+    let result = reserveTables.filter(t => !t.lineOfBusiness || t.lineOfBusiness === companyConfig.lineOfBusiness);
     if (searchQuery) {
         const lowerQ = searchQuery.toLowerCase();
         result = result.filter(r => r.premiumTableId.toLowerCase().includes(lowerQ));

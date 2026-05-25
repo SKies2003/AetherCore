@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
-import { Plan, SavedPolicy } from '../types';
+import { Plan, SavedPolicy, CedingCompanyConfig } from '../types';
 import { Download, Upload, Trash2, Edit2, Plus, X, FileText, AlertCircle } from 'lucide-react';
 
 export default function PlansView({ 
   plans, 
   setPlans,
-  savedPolicies
+  savedPolicies,
+  companyConfig
 }: { 
   plans: Plan[]; 
   setPlans: React.Dispatch<React.SetStateAction<Plan[]>>;
   savedPolicies: SavedPolicy[];
+  companyConfig: CedingCompanyConfig;
 }) {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -60,7 +62,8 @@ export default function PlansView({
         planName,
         planCode,
         riskCoverage,
-        type
+        type,
+        lineOfBusiness: companyConfig.lineOfBusiness
       }]);
     }
     closeForm();
@@ -145,7 +148,8 @@ export default function PlansView({
               planName: importedName,
               planCode: importedCode,
               riskCoverage: importedRiskCov,
-              type: solvedType
+              type: solvedType,
+              lineOfBusiness: companyConfig.lineOfBusiness
             });
           }
         }
@@ -159,9 +163,11 @@ export default function PlansView({
     e.target.value = '';
   };
 
+  const displayedPlans = plans.filter(p => !p.lineOfBusiness || p.lineOfBusiness === companyConfig.lineOfBusiness);
+
   const handleExportCSV = () => {
     const headers = ['Plan Name', 'Plan Code', 'Risk Coverage', 'Type'];
-    const rows = plans.map(p => [p.planName, p.planCode, p.riskCoverage, p.type]);
+    const rows = displayedPlans.map(p => [p.planName, p.planCode, p.riskCoverage, p.type]);
     
     const csvContent = [
       headers.join(','),
@@ -264,7 +270,7 @@ export default function PlansView({
         </div>
       )}
 
-      {plans.length > 0 ? (
+      {displayedPlans.length > 0 ? (
         <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50">
@@ -277,7 +283,7 @@ export default function PlansView({
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-slate-200">
-              {plans.map(p => (
+              {displayedPlans.map(p => (
                 <tr key={p.id} className="hover:bg-slate-50">
                   <td className="px-6 py-4 whitespace-nowrap text-slate-900 font-medium">{p.planName}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-slate-500 font-mono">{p.planCode}</td>

@@ -1,19 +1,25 @@
 import React, { useState, useMemo } from 'react';
-import { SavedPolicy } from '../types';
+import { SavedPolicy, CedingCompanyConfig, ProcessInterval } from '../types';
 import { FileSpreadsheet, Trash2, Search, Eye, X, Download } from 'lucide-react';
 
 export default function CessionsView({
   savedPolicies,
-  setSavedPolicies
+  setSavedPolicies,
+  companyConfig,
+  processIntervals
 }: {
   savedPolicies: SavedPolicy[];
   setSavedPolicies: React.Dispatch<React.SetStateAction<SavedPolicy[]>>;
+  companyConfig: CedingCompanyConfig;
+  processIntervals: ProcessInterval[];
 }) {
   const [searchField, setSearchField] = useState<'policyNumber' | 'customerId' | 'actualCessionNo'>('policyNumber');
   const [searchValue, setSearchValue] = useState('');
   const [viewPolicy, setViewPolicy] = useState<SavedPolicy | null>(null);
+  
+  const [selectedCessionForTransactions, setSelectedCessionForTransactions] = useState<SavedPolicy | null>(null);
 
-  const cededPolicies = useMemo(() => savedPolicies.filter(p => p.cessionStatus !== 'Facultative Pending' && p.cessionStatus !== 'Declined'), [savedPolicies]);
+  const cededPolicies = useMemo(() => savedPolicies.filter(p => p.cessionStatus !== 'Facultative Pending' && p.cessionStatus !== 'Declined' && (!p.lineOfBusiness || p.lineOfBusiness === companyConfig.lineOfBusiness)), [savedPolicies, companyConfig]);
 
   const filteredPolicies = useMemo(() => {
     if (!searchValue.trim()) return cededPolicies;
@@ -42,6 +48,7 @@ export default function CessionsView({
   const handleExportCSV = () => {
     const headers = [
       'Actual Cession No',
+      'Process Interval',
       'Customer ID',
       'Policy Number',
       'Policyholder Name',
@@ -57,26 +64,27 @@ export default function CessionsView({
       'Sum Assured Base',
       'Date of Commencement',
       'Treaty Name',
+      'Sub-Treaty Name',
       'Gross Reserves',
       'Reinsurer Payment Freq',
       'Policyholder Payment Freq',
       'EMR Percentage',
       'Other Extra Premium',
       'Sum At Risk',
-      'Sum Ceded',
       'Premium Rate',
-      'Model Factor',
-      'Premium Amount',
-      'Reinsurer Splits'
+      'Model Factor'
     ];
 
     const rows = filteredPolicies.map(p => {
       const splits = p.reinsurerSplits && p.reinsurerSplits.length > 0
         ? p.reinsurerSplits.map(s => `${s.name}: ${s.sharePercentage}%`).join(' | ')
         : 'N/A';
+        
+      const interval = processIntervals.find(inv => inv.id === p.processIntervalId)?.description || 'N/A';
 
       return [
         p.actualCessionNo ?? '',
+        interval,
         p.customerId,
         p.policyNumber,
         p.policyHolderName,
@@ -92,17 +100,15 @@ export default function CessionsView({
         p.sumAssured,
         p.dateOfCommencement,
         p.treatyName,
+        p.subTreatyName ?? '',
         p.grossReserves,
         p.reinsurerPaymentFrequency,
         p.policyholderPremiumFrequency,
         p.emrPercentage,
         p.otherExtraPremium,
         p.sumAtRisk,
-        p.sumCeded,
         p.premiumRate ?? '',
-        p.modelFactor ?? '',
-        p.premiumAmount ?? '',
-        splits
+        p.modelFactor ?? ''
       ];
     });
 
@@ -136,7 +142,7 @@ export default function CessionsView({
         </button>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-lg shadow-sm">
+      <div className="bg-white border border-slate-200 rounded-lg shadow-sm flex-1 min-h-[400px]">
         <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row gap-4 items-center">
           <div className="flex items-center gap-2">
             <Search className="w-5 h-5 text-slate-400" />
@@ -165,31 +171,34 @@ export default function CessionsView({
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto h-[400px] overflow-y-auto">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-white border-b border-slate-200">
+            <thead className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
               <tr>
                 <th scope="col" className="px-6 py-3 text-left font-semibold text-slate-500 uppercase tracking-wider">Cess. No</th>
+                <th scope="col" className="px-6 py-3 text-left font-semibold text-slate-500 uppercase tracking-wider">Process Interval</th>
                 <th scope="col" className="px-6 py-3 text-left font-semibold text-slate-500 uppercase tracking-wider">Customer / Policy</th>
-                <th scope="col" className="px-6 py-3 text-left font-semibold text-slate-500 uppercase tracking-wider">Treaty / Coverage</th>
-                <th scope="col" className="px-6 py-3 text-right font-semibold text-slate-500 uppercase tracking-wider">Sum Ceded</th>
-                <th scope="col" className="px-6 py-3 text-left font-semibold text-slate-500 uppercase tracking-wider">Reinsurer Split</th>
-                <th scope="col" className="px-6 py-3 text-right font-semibold text-slate-500 uppercase tracking-wider">Premium Amount</th>
+                <th scope="col" className="px-6 py-3 text-left font-semibold text-slate-500 uppercase tracking-wider">Treaty / Sub-Treaty</th>
                 <th scope="col" className="px-6 py-3 text-center font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-slate-200">
               {filteredPolicies.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                  <td colSpan={8} className="px-6 py-12 text-center text-slate-500">
                     No cessions found matching your search.
                   </td>
                 </tr>
               ) : (
-                filteredPolicies.map((p) => (
-                  <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+                filteredPolicies.map((p) => {
+                  const interval = processIntervals.find(inv => inv.id === p.processIntervalId)?.description || 'N/A';
+                  return (
+                  <tr key={p.id} className={`hover:bg-slate-50 transition-colors cursor-pointer ${selectedCessionForTransactions?.id === p.id ? 'bg-blue-50/50' : ''}`} onClick={() => setSelectedCessionForTransactions(p)}>
                     <td className="px-6 py-4 whitespace-nowrap text-slate-500 font-mono text-xs">
                       {p.actualCessionNo !== null ? `#${p.actualCessionNo}` : '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-slate-900 text-xs">
+                      {interval}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="font-medium text-slate-900">{p.policyHolderName || 'N/A'}</div>
@@ -198,42 +207,24 @@ export default function CessionsView({
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-slate-900">{p.treatyName}</div>
-                      <div className="text-xs text-slate-500">{p.riskCoverage}</div>
+                      <div className="text-xs text-slate-500">{p.subTreatyName || p.riskCoverage}</div>
                       {(p.planName || p.planCode) && (
                         <div className="text-xs text-blue-600 mt-0.5" title="Plan">
                           {p.planName} {p.planCode ? `(${p.planCode})` : ''}
                         </div>
                       )}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right font-mono text-emerald-600">
-                      {formatCurrency(p.sumCeded)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-left text-xs space-y-1">
-                      {p.reinsurerSplits && p.reinsurerSplits.length > 0 ? (
-                        p.reinsurerSplits.map((split, idx) => (
-                          <div key={idx} className="flex justify-between gap-4">
-                            <span className="text-slate-600 truncate max-w-[120px]" title={split.name}>{split.name} ({split.sharePercentage}%)</span>
-                            <span className="font-mono text-slate-900">{formatCurrency(split.premiumAmount)}</span>
-                          </div>
-                        ))
-                      ) : (
-                        <span className="text-slate-400">N/A</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right font-mono font-bold text-blue-600">
-                      {p.premiumAmount !== null ? formatCurrency(p.premiumAmount) : 'N/A'}
-                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center">
                       <div className="flex justify-center gap-2">
                         <button
-                          onClick={() => setViewPolicy(p)}
+                          onClick={(e) => { e.stopPropagation(); setViewPolicy(p); }}
                           className="text-slate-400 hover:text-blue-500 transition-colors p-1"
                           title="View details"
                         >
                           <Eye className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => setSavedPolicies(savedPolicies.filter(sp => sp.id !== p.id))}
+                          onClick={(e) => { e.stopPropagation(); setSavedPolicies(savedPolicies.filter(sp => sp.id !== p.id)); if (selectedCessionForTransactions?.id === p.id) setSelectedCessionForTransactions(null); }}
                           className="text-slate-400 hover:text-red-500 transition-colors p-1"
                           title="Delete policy"
                         >
@@ -242,10 +233,71 @@ export default function CessionsView({
                       </div>
                     </td>
                   </tr>
-                ))
+                )})
               )}
             </tbody>
           </table>
+        </div>
+      </div>
+      
+      {/* Lower half - Cession Transactions */}
+      <div className="bg-white border border-slate-200 rounded-lg shadow-sm min-h-[300px] mt-6">
+        <div className="p-4 border-b border-slate-200 bg-slate-50">
+           <h3 className="text-sm font-semibold text-slate-800">Cession Transactions</h3>
+        </div>
+        <div className="p-6">
+          {selectedCessionForTransactions ? (
+             <div className="space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                  <div>
+                    <h4 className="font-semibold text-slate-900">{selectedCessionForTransactions.policyHolderName}</h4>
+                    <p className="text-sm text-slate-500">Policy: {selectedCessionForTransactions.policyNumber}</p>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm font-mono text-emerald-600">{formatCurrency(selectedCessionForTransactions.sumCeded)} Ceded</div>
+                    <div className="text-xs font-mono text-slate-500">{processIntervals.find(inv => inv.id === selectedCessionForTransactions.processIntervalId)?.description || 'N/A'}</div>
+                  </div>
+                </div>
+                
+                <h5 className="text-sm font-semibold text-slate-700">Transaction History</h5>
+                {selectedCessionForTransactions.transactions && selectedCessionForTransactions.transactions.length > 0 ? (
+                  <div className="border border-slate-200 rounded-md overflow-hidden">
+                    <table className="min-w-full divide-y divide-slate-200 text-sm">
+                       <thead className="bg-slate-50">
+                         <tr>
+                            <th className="px-4 py-2 text-left font-medium text-slate-500">TRID</th>
+                            <th className="px-4 py-2 text-left font-medium text-slate-500">Process Interval</th>
+                            <th className="px-4 py-2 text-left font-medium text-slate-500">CalcFrom</th>
+                            <th className="px-4 py-2 text-left font-medium text-slate-500">CalcTo</th>
+                            <th className="px-4 py-2 text-left font-medium text-slate-500">ReinsurerID</th>
+                            <th className="px-4 py-2 text-right font-medium text-slate-500">SumCeded</th>
+                            <th className="px-4 py-2 text-right font-medium text-slate-500">PremiumAmount</th>
+                         </tr>
+                       </thead>
+                       <tbody className="bg-white divide-y divide-slate-100">
+                          {selectedCessionForTransactions.transactions.map((tx, i) => (
+                             <tr key={i}>
+                               <td className="px-4 py-3 text-slate-500 font-mono text-xs truncate max-w-[100px]">{tx.id.substring(0, 8)}...</td>
+                               <td className="px-4 py-3 text-slate-500 text-xs">{processIntervals.find(inv => inv.id === tx.processIntervalId)?.description || 'N/A'}</td>
+                               <td className="px-4 py-3 text-slate-500">{tx.calcFrom}</td>
+                               <td className="px-4 py-3 text-slate-500">{tx.calcTo}</td>
+                               <td className="px-4 py-3 text-slate-900 font-medium">{tx.reinsurerName}</td>
+                               <td className="px-4 py-3 text-right font-mono text-slate-500">{formatCurrency(tx.sumCeded)}</td>
+                               <td className="px-4 py-3 text-right font-mono font-medium text-slate-900">{formatCurrency(tx.premiumAmount)}</td>
+                             </tr>
+                          ))}
+                       </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-sm text-slate-500 italic">No transactions found for this cession.</div>
+                )}
+             </div>
+          ) : (
+            <div className="flex items-center justify-center h-full min-h-[200px] text-slate-400 text-sm italic border-2 border-dashed border-slate-100 rounded-lg">
+               Select a cession from the table above to view its transactions.
+            </div>
+          )}
         </div>
       </div>
 

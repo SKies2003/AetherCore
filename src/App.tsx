@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Activity, ShieldCheck, FileText, Calculator, Settings, AlertCircle, Building2, FileSpreadsheet } from 'lucide-react';
-import { Treaty, MasterConfig, SavedPolicy, ReserveTableEntry } from './types';
+import { Treaty, MasterConfig, SavedPolicy, ReserveTableEntry, ProcessYear, ProcessInterval } from './types';
 import TreatiesView from './components/TreatiesView';
 import CalculatorView from './components/CalculatorView';
 import MasterView from './components/MasterView';
@@ -40,6 +40,8 @@ export default function App() {
 
   const [savedPolicies, setSavedPolicies] = useState<SavedPolicy[]>([]);
   const [reserveTables, setReserveTables] = useState<ReserveTableEntry[]>([]);
+  const [processYears, setProcessYears] = useState<ProcessYear[]>([]);
+  const [processIntervals, setProcessIntervals] = useState<ProcessInterval[]>([]);
 
   const handleAddTreaty = (treaty: Treaty | Treaty[]) => {
     setTreaties(prev => Array.isArray(treaty) ? [...prev, ...treaty] : [...prev, treaty]);
@@ -191,6 +193,7 @@ export default function App() {
               plans={plans} 
               setPlans={setPlans}
               savedPolicies={savedPolicies}
+              companyConfig={companyConfig}
             />
           </div>
 
@@ -208,7 +211,7 @@ export default function App() {
           </div>
 
           <div className={activeTab === 'calculator' ? 'block' : 'hidden'}>
-            <CalculatorView treaties={treaties.filter(t => !t.lineOfBusiness || t.lineOfBusiness === companyConfig.lineOfBusiness)} masterConfig={masterConfig} plans={plans} savedPolicies={savedPolicies} setSavedPolicies={setSavedPolicies} reserveTables={reserveTables} />
+            <CalculatorView treaties={treaties.filter(t => !t.lineOfBusiness || t.lineOfBusiness === companyConfig.lineOfBusiness)} masterConfig={masterConfig} plans={plans} savedPolicies={savedPolicies} setSavedPolicies={setSavedPolicies} reserveTables={reserveTables} companyConfig={companyConfig} processIntervals={processIntervals} processYears={processYears} />
           </div>
 
           <div className={activeTab === 'master' ? 'block' : 'hidden'}>
@@ -216,19 +219,19 @@ export default function App() {
           </div>
 
           <div className={activeTab === 'cessions' ? 'block' : 'hidden'}>
-            <CessionsView savedPolicies={savedPolicies} setSavedPolicies={setSavedPolicies} />
+            <CessionsView savedPolicies={savedPolicies} setSavedPolicies={setSavedPolicies} companyConfig={companyConfig} processIntervals={processIntervals} />
           </div>
 
           <div className={activeTab === 'facultative' ? 'block' : 'hidden'}>
-            <FacultativeView savedPolicies={savedPolicies} setSavedPolicies={setSavedPolicies} />
+            <FacultativeView savedPolicies={savedPolicies} setSavedPolicies={setSavedPolicies} companyConfig={companyConfig} />
           </div>
 
           <div className={activeTab === 'accounts' ? 'block' : 'hidden'}>
-            <AccountsView />
+            <AccountsView savedPolicies={savedPolicies} treaties={treaties} companyConfig={companyConfig} processYears={processYears} setProcessYears={setProcessYears} processIntervals={processIntervals} setProcessIntervals={setProcessIntervals} />
           </div>
 
           <div className={activeTab === 'reserve-tables' ? 'block' : 'hidden'}>
-            <ReserveTablesView reserveTables={reserveTables} setReserveTables={setReserveTables} />
+            <ReserveTablesView reserveTables={reserveTables} setReserveTables={setReserveTables} companyConfig={companyConfig} />
           </div>
         </div>
       </main>
